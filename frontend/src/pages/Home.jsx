@@ -115,7 +115,8 @@ export default function Home() {
       <Section>
         <SectionHead
           eyebrow="Value proposition"
-          title="Three people have to say yes. Here is the argument for each."
+          title="Why do we need this?"
+          lede="Three people have to say yes, and each of them is asking a different question."
         />
         <div className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-rule bg-rule md:grid-cols-3">
           {VALUE_PROP.map((v) => (
@@ -127,6 +128,14 @@ export default function Home() {
               <p className="mt-3 text-sm leading-relaxed text-ink-50">{v.sub}</p>
             </div>
           ))}
+        </div>
+        <div className="mt-8">
+          <Link
+            to="/why"
+            className="text-[15px] font-medium underline underline-offset-4 hover:text-signal"
+          >
+            The full business case →
+          </Link>
         </div>
       </Section>
 

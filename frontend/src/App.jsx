@@ -4,6 +4,7 @@ import { Button, Section } from "./components/ui/index.jsx";
 
 import Home from "./pages/Home.jsx";
 import Platform from "./pages/Platform.jsx";
+import Why from "./pages/Why.jsx";
 import Tracks from "./pages/Tracks.jsx";
 import ForTeams from "./pages/ForTeams.jsx";
 import Pricing from "./pages/Pricing.jsx";
@@ -40,6 +41,7 @@ export default function App() {
         <Route element={<MarketingLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/platform" element={<Platform />} />
+          <Route path="/why" element={<Why />} />
           <Route path="/tracks" element={<Tracks />} />
           <Route path="/for-teams" element={<ForTeams />} />
           <Route path="/pricing" element={<Pricing />} />

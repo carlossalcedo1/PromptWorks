@@ -1,0 +1,61 @@
+# Promptworks — Stage 1 hosting stack (NUC)
+#
+#   caddy       serves frontend/dist as a static SPA
+#   cloudflared holds an outbound tunnel to Cloudflare; no inbound ports needed
+#
+# Stage 2 adds `api` (FastAPI) and `mongo` services to this same file.
+# Run from this directory:  docker compose up -d
+
+name: promptworks
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: promptworks-caddy
+    restart: unless-stopped
+    # Bound to localhost ONLY. cloudflared reaches Caddy over the internal
+    # docker network as http://caddy:80, so nothing needs to be exposed to
+    # the LAN. Publishing on 0.0.0.0 here would punch through ufw — Docker
+    # writes its own iptables rules and does not respect ufw.
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../frontend/dist:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - web
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: promptworks-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:?TUNNEL_TOKEN is not set — copy .env.example to .env and paste your tunnel token}
+    depends_on:
+      - caddy
+    networks:
+      - web
+
+  # Optional: uptime monitoring. Reachable at http://127.0.0.1:3001 via an
+  # SSH tunnel. Uncomment when you want it.
+  # uptime-kuma:
+  #   image: louislam/uptime-kuma:1
+  #   container_name: promptworks-kuma
+  #   restart: unless-stopped
+  #   ports:
+  #     - "127.0.0.1:3001:3001"
+  #   volumes:
+  #     - kuma_data:/app/data
+  #   networks:
+  #     - web
+
+networks:
+  web:
+
+volumes:
+  caddy_data:
+  caddy_config:
+  # kuma_data:

@@ -22,7 +22,7 @@ export function MarketingHeader() {
       <div className="hidden border-b border-rule md:block">
         <div className="mx-auto flex h-9 w-full max-w-[1180px] items-center justify-between px-6 text-[13px] text-ink-50 md:px-10">
           <nav className="flex items-center gap-6">
-            <Link to="/platform" className="hover:text-ink">
+            <Link to="/why" className="hover:text-ink">
               Why prompt training?
             </Link>
             <Link to="/for-teams" className="hover:text-ink">
