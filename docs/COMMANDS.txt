@@ -1,0 +1,102 @@
+PROMPTWORKS — COPY-PASTE TERMINAL COMMANDS
+=============================================
+Run these from inside your project folder in VS Code's terminal, unless
+a step says otherwise. Replace anything in <angle brackets>.
+
+
+ONE-TIME SETUP
+-----------------------------------------
+# Confirm Git is installed
+git --version
+
+# Set your Git identity (only needed once per machine)
+git config --global user.email "<your-email@example.com>"
+git config --global user.name "<Your Name>"
+
+# Clone the existing repo (only if this device isn't connected yet)
+git clone https://github.com/carlossalcedo1/PromptWorks.git
+
+# If a folder with that name already exists, clone into a different name:
+git clone https://github.com/carlossalcedo1/PromptWorks.git PromptWorks-repo
+
+
+INSTALL DEPENDENCIES
+-----------------------------------------
+pip install -r requirements.txt
+
+# If "pip" isn't recognized, try one of these instead:
+pip3 install -r requirements.txt
+py -m pip install -r requirements.txt
+
+
+RUNNING THE APP
+-----------------------------------------
+# Standalone smoke test for the grader (empty/weak/strong demo prompts)
+python llm_grader.py
+
+# Run the FastAPI backend locally
+uvicorn main:app --reload
+
+# Then visit in a browser:
+#   http://127.0.0.1:8000/health        <- basic liveness check
+#   http://127.0.0.1:8000/docs          <- interactive API docs, test POST /attempts here
+#   http://127.0.0.1:8000/admin/spend   <- cost tracking so far
+
+
+RUNNING TESTS
+-----------------------------------------
+# Full suite (mocked tests + live injection tests if ANTHROPIC_API_KEY is set)
+python -m pytest tests/ -v
+
+# Only the free/mocked tests, skip the ones that call the real API
+python -m pytest tests/ --ignore=tests/test_injection_live.py -v
+
+# Only the live prompt-injection resistance test (costs a few cents)
+python -m pytest tests/test_injection_live.py -v -s
+
+# Just one file
+python -m pytest tests/test_llm_grader.py -v
+python -m pytest tests/test_spend_tracker.py -v
+python -m pytest tests/test_escalation.py -v
+
+
+ENVIRONMENT / DIAGNOSTICS
+-----------------------------------------
+# Confirm you're in the right folder
+Get-Location
+
+# List ALL files including hidden ones like .env
+Get-ChildItem -Force
+
+# Check where a package is actually installed (useful for Pylance issues)
+pip show anthropic
+pip show python-dotenv
+
+# Safely check .env's key line WITHOUT printing your real key
+(Get-Content .env) -replace '(ANTHROPIC_API_KEY=).+','$1<hidden>'
+
+
+GIT WORKFLOW — PUSHING CHANGES
+-----------------------------------------
+# See what's changed / confirm .env is NOT in the list before committing
+git status
+
+# Stage everything, commit, and push
+git add .
+git commit -m "<describe what changed>"
+git push
+
+# Pull the latest changes from GitHub (e.g. on a different device)
+git pull
+
+
+TESTING A SPECIFIC MODEL (Haiku vs Sonnet cost/quality comparison)
+-----------------------------------------
+# Windows PowerShell — set the env var for just this one command
+$env:PROMPTWORKS_GRADER_MODEL="claude-haiku-4-5"; python llm_grader.py
+$env:PROMPTWORKS_GRADER_MODEL="claude-sonnet-5"; python llm_grader.py
+
+
+OPTIONAL BUDGET CAP (stops grading once a daily spend limit is hit)
+-----------------------------------------
+$env:PROMPTWORKS_DAILY_BUDGET_USD="5.00"; uvicorn main:app --reload
