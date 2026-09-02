@@ -1,0 +1,19 @@
+{
+  "slug": "spec-to-test-cases",
+  "title": "Spec to test cases",
+  "track": "engineering",
+  "difficulty": "Advanced",
+  "brief": "Turn a short feature spec into a test plan that covers the cases the spec forgot.",
+  "context": "A short feature spec is supplied as input. The engineer implementing it is doing so this sprint. Real specs leave gaps: the spec will be silent or ambiguous on some behaviour, and it will not enumerate its own edge cases or failure modes.",
+  "constraints": [
+    "Cover happy path, edge, and failure",
+    "Flag ambiguities in the spec",
+    "Given/When/Then format",
+    "No implementation detail"
+  ],
+  "output_format": "Given / When / Then, one block per case, each labelled happy path, edge or failure. Then AMBIGUITIES as a numbered list.",
+  "role_and_audience": "Engineer implementing the feature this sprint",
+  "examples": [],
+  "reference_prompt": "Read the feature spec below and produce a test plan.\n\nAudience: the engineer implementing it this sprint.\n\nRequirements:\n- Cover the happy path, the edge cases, and the failure modes. Label each case with which of the three it is.\n- Where the spec is ambiguous, do not guess - add it to an AMBIGUITIES section with the specific question.\n- Test behaviour, not implementation. No references to internal functions or database tables.\n\nOutput format: Given / When / Then, one block per case, then AMBIGUITIES as a numbered list.\n\nSpec:\n\"\"\"\n{{spec}}\n\"\"\"",
+  "calibration_examples": []
+}

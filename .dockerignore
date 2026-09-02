@@ -1,0 +1,27 @@
+# The API build context is the repo root, so without this the whole frontend
+# (node_modules included) and the entire git history get shipped to the daemon
+# on every build.
+
+.git/
+.gitignore
+
+# Never bake a credential into an image layer.
+.env
+deploy/.env
+**/.env
+
+frontend/
+docs/
+
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Runtime state, not source. Lives in a volume at /data instead.
+spend_log.jsonl
+
+.vscode/
+.claude/

@@ -1,0 +1,61 @@
+# Promptworks API (FastAPI).
+#
+# Build context is the REPO ROOT, not deploy/ — the image needs backend/,
+# alembic/, scripts/ and data/. The compose file sets that up:
+#
+#   build:
+#     context: ..
+#     dockerfile: deploy/Dockerfile.api
+#
+# Build and run it by hand with:
+#   docker build -f deploy/Dockerfile.api -t promptworks-api .
+
+FROM python:3.13-slim
+
+# PYTHONUNBUFFERED so log lines reach `docker compose logs` as they happen
+# rather than sitting in a buffer until the process exits — which is exactly
+# when you most want to read them.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Requirements first, as their own layer: application code changes on every
+# deploy, dependencies almost never do, so this keeps rebuilds to seconds.
+# psycopg[binary] ships wheels, so there is no compiler needed here.
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/ ./backend/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./
+COPY scripts/ ./scripts/
+COPY data/ ./data/
+
+# Runtime state that must survive a container replacement — currently just
+# spend_tracker's JSONL log, which the daily budget cap reads. Compose mounts
+# a named volume here; without it, every redeploy would silently reset the
+# day's recorded spend to zero.
+RUN mkdir -p /data
+
+# Run as a non-root user. A container that only reads its own code and talks
+# to Postgres has no business being root.
+RUN useradd --create-home --uid 10001 promptworks \
+    && chown -R promptworks:promptworks /app /data
+USER promptworks
+
+EXPOSE 8000
+
+# No curl in the slim image, and installing it just for this would be silly.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+
+# Deliberately ONE worker.
+#
+# slowapi's default rate-limit storage is in-process memory, so N workers
+# means each one keeps its own counter and the real limit becomes N times
+# what ATTEMPTS_RATE_LIMIT says — on the endpoint that spends money per call.
+# A single worker is plenty for a NUC; if this ever needs to scale out, give
+# slowapi a shared Redis backend *first*, then add workers.
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

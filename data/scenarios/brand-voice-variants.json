@@ -1,0 +1,21 @@
+{
+  "slug": "brand-voice-variants",
+  "title": "Six ad variants under one brand voice",
+  "track": "marketing",
+  "difficulty": "Intermediate",
+  "brief": "Generate six ad headline variants that all stay inside a brand voice guide.",
+  "context": "The campaign is paid social, where a reader gives an ad about three seconds. A brand voice guide is supplied as input and is to be obeyed literally. Six headlines are needed, each taking a genuinely different angle rather than six rewrites of one idea.",
+  "constraints": [
+    "Six variants, meaningfully different",
+    "Brand voice guide obeyed",
+    "Under 12 words each",
+    "No superlatives or unprovable claims"
+  ],
+  "output_format": "A numbered list. Headline on the first line, the angle in parentheses on the second.",
+  "role_and_audience": "Paid social, scrolling, three seconds of attention",
+  "examples": [
+    "1. \"Your claim, explained in plain English.\"\n   (angle: clarity)"
+  ],
+  "reference_prompt": "Generate six ad headlines for paid social.\n\nBrand voice guide: {{voice_guide}}. Obey it literally - if it says \"never use exclamation marks\", use none.\n\nRequirements:\n- Six variants, each taking a genuinely different angle (not six rewrites of one idea). Name the angle after each.\n- Under 12 words each.\n- No superlatives and no claims we cannot prove (\"the best\", \"guaranteed\").\n\nOutput format: numbered list, headline on the first line, angle in parentheses on the second.\n\nExample of the expected register:\n1. \"Your claim, explained in plain English.\"\n   (angle: clarity)",
+  "calibration_examples": []
+}

@@ -1,49 +1,83 @@
-# Promptworks — NUC setup runbook
+# Promptworks — NUC hosting runbook (as-built)
 
-Ubuntu Server + Docker + Caddy + Cloudflare Tunnel. Wi-Fi, no router admin access, no port forwarding.
+**Status: live.** Ubuntu Desktop 22.04 on an Intel NUC, Wi-Fi only, behind CGNAT, no port forwarding, no router admin access, zero inbound ports open.
 
-Every phase ends with a **verify** step. Do not move past a failed verify — the single most expensive mistake in this build is stacking a broken tunnel on top of a broken web server and then debugging both at once.
-
-Estimated time: ~3 hours, of which maybe 40 minutes is waiting on downloads and DNS.
-
-Replace throughout:
-- `carlos` — your Ubuntu username
-- `wlp2s0` — your actual Wi-Fi interface name (Phase 3 shows you how to find it)
-- `promptworks.tld` — your real domain once you own it
+This document was rewritten after the build. The first draft assumed Ubuntu Server and included two steps that were unnecessary and one that caused an outage — all corrected below. If you are rebuilding this box, follow this version.
 
 ---
 
-## Phase 0 — Before you touch the NUC
+## What is actually running
 
-- [ ] **Push the repo to GitHub.** The NUC pulls from a remote; it does not get files copied to it. If `git remote -v` in the project folder prints nothing, create the repo and push first.
-- [ ] Confirm `frontend/dist` is gitignored (it is). The NUC builds its own — never commit build output.
-- [ ] Have your Wi-Fi SSID and password written down. The Ubuntu Server installer asks for them in a text UI with no copy-paste.
-- [ ] Ubuntu Server LTS ISO on a USB stick (`https://ubuntu.com/download/server`), written with Rufus or balenaEtcher.
-- [ ] A monitor and keyboard for the NUC, for the install only. Everything after Phase 3 is over SSH.
-- [ ] Domain: not needed yet. Phase 7 proves the whole chain works on a throwaway URL before you spend a cent.
-
----
-
-## Phase 1 — Install Ubuntu Server
-
-1. Boot the USB, pick **Ubuntu Server** (not minimized).
-2. At **Network connections**, select the `wl…` interface → **Edit Wifi** → enter SSID and passphrase. Wait for it to show a DHCP address before continuing — if it doesn't, nothing later will work.
-3. Storage: use the whole disk. No LVM encryption unless you want to type a passphrase at every boot — a headless server that won't boot unattended defeats the point.
-4. Profile: set your name, **server name `nuc`**, username, password.
-5. **Tick "Install OpenSSH server."** Miss this and you are stuck at the physical keyboard.
-6. Skip every snap on the featured-server-snaps screen. You want Docker from Docker's own repo, not the snap.
-7. Reboot, pull the USB, log in at the console.
-
-**Verify**
-
-```bash
-ip a          # a wl… interface with an inet address
-ping -c3 1.1.1.1
+```
+npm run build → frontend/dist ─┐
+                               ↓
+                             Caddy (container, :80)
+                               ├── /api/*  → api (FastAPI, :8000)
+                               │                ↓
+                               │              postgres (:5432, internal only)
+                               └── everything else → static SPA
+                               ↓ docker network "promptworks_web"
+                             cloudflared (container, outbound only)
+                               ↓ TLS, outbound 443
+                             Cloudflare edge
+                               ↓
+                             yourdomain.com
 ```
 
+Five containers, one compose file, one `.env`. Nothing listens on a public port — Caddy and uptime-kuma bind to `127.0.0.1`, and `api` and `postgres` publish nothing at all. `ufw` denies all incoming traffic and always should.
+
+The API sits under `/api/*` on the **same hostname** as the frontend, so the browser never makes a cross-origin request and CORS is not in play for normal use.
+
+| Piece | Where | Notes |
+|---|---|---|
+| Repo | `~/promptworks` | Cloned from GitHub; NUC pulls, nothing is copied to it |
+| Static build | `frontend/dist` | Bind-mounted read-only into Caddy |
+| API image | `deploy/Dockerfile.api` | Built from the repo root; rebuilt by `deploy.sh` |
+| Database | `pgdata` volume | The only data here you cannot rebuild by redeploying |
+| Spend log | `api_data` volume | `spend_tracker`'s JSONL; the budget cap reads it back |
+| Stack | `deploy/docker-compose.yml` | `docker compose up -d` |
+| Secrets | `deploy/.env` | Tunnel token, DB password, JWT secret, API keys. Gitignored. |
+| Routing | Cloudflare Zero Trust | Tunnel `promptworks-nuc`, two published application routes |
+
 ---
 
-## Phase 2 — Base system
+## Operational answers
+
+**Does it survive a reboot?** Yes. `restart: unless-stopped` on both containers plus `docker.service` enabled at boot. Nothing needs a login session — Docker Engine is a systemd service. **This only holds if the machine never sleeps** (see below).
+
+**Does it survive moving to a different Wi-Fi network?** Yes, and this is the real payoff of a tunnel. cloudflared makes an *outbound* connection, so it works from any network that gives the NUC internet — a different house, a phone hotspot, a hotel. No config change, no DNS update, no router involvement. The only thing that breaks it is a captive portal, which blocks traffic until someone authenticates in a browser.
+
+**Does it survive a router reboot?** Yes. cloudflared retries continuously and re-registers within roughly 10–60 seconds of the network returning. Expect a brief outage the length of the router's boot, not a manual fix.
+
+**What it does NOT survive:** the NUC sleeping. Ubuntu Desktop suspends on idle by default, and a suspended server is a dead site. This is the single most likely cause of a mystery outage on this build.
+
+```bash
+sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+systemctl status sleep.target      # should read "masked"
+```
+
+Also set Settings → Power → Automatic Suspend → Off, and Screen Blank to whatever you like (blanking the screen is fine; suspending is not).
+
+---
+
+## Build procedure (corrected)
+
+### Phase 0 — Before you start
+
+- Push the repo to GitHub, **including `deploy/`**. The NUC pulls from the remote; files are never copied to it.
+- `frontend/dist` stays gitignored. The NUC builds its own.
+- Have the Wi-Fi SSID and password to hand.
+- Domain: not required until Phase 7. Phase 6 proves the whole chain for free first.
+
+### Phase 1 — Install Ubuntu
+
+Desktop or Server both work. **This box runs Desktop**, which changes three things versus the Server install:
+
+- `openssh-server` is **not** installed by default — you must add it (Phase 3).
+- Networking is NetworkManager, not netplan/systemd-networkd. Use `nmcli`, and the power-save fix is a NetworkManager drop-in, not a systemd unit.
+- It suspends on idle. Mask the sleep targets (above) or the site dies overnight.
+
+### Phase 2 — Base system
 
 ```bash
 sudo apt update && sudo apt full-upgrade -y
@@ -51,96 +85,54 @@ sudo apt install -y curl git iw avahi-daemon
 sudo hostnamectl set-hostname nuc
 ```
 
-`avahi-daemon` makes the box answer to `nuc.local` from your PC regardless of what IP the router hands it. This is the fix for having no router admin access.
+`avahi-daemon` gives you `nuc.local` from other machines regardless of what IP the router hands out. This is what replaces a DHCP reservation when you have no router admin access.
 
-**Verify** — from your Windows PC:
+**Verify** from another machine: `ping nuc.local`
 
-```powershell
-ping nuc.local
-```
+### Phase 3 — Wi-Fi power save, and SSH
 
-If that resolves, you never need to know the NUC's IP again. If it doesn't, find the IP with `ip a` at the console and use that instead; `.local` resolution fails on some networks with client isolation.
-
----
-
-## Phase 3 — Wi-Fi hardening
-
-An idle server that lets its Wi-Fi card nap produces random tunnel drops that look exactly like a Cloudflare problem and are not. Fix it now.
-
-Find your interface name:
+An idle server letting its wireless card sleep produces intermittent drops that look exactly like a Cloudflare problem. On NetworkManager (Desktop):
 
 ```bash
-iw dev | grep Interface     # e.g. wlp2s0
-```
-
-Ubuntu **Server** uses netplan + systemd-networkd, so power save is set with a small boot service (substitute your interface):
-
-```bash
-sudo tee /etc/systemd/system/wifi-powersave-off.service >/dev/null <<'EOF'
-[Unit]
-Description=Disable WiFi power saving
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/sbin/iw dev wlp2s0 set power_save off
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
+sudo tee /etc/NetworkManager/conf.d/wifi-powersave.conf >/dev/null <<'EOF'
+[connection]
+wifi.powersave = 2
 EOF
+sudo systemctl restart NetworkManager
 
-sudo systemctl enable --now wifi-powersave-off.service
+iw dev                                # find the interface, e.g. wlp0s20f3
+iw dev wlp0s20f3 get power_save       # Power save: off
 ```
 
-> If you installed Ubuntu **Desktop** instead, it uses NetworkManager and the equivalent is a `wifi.powersave = 2` drop-in under `/etc/NetworkManager/conf.d/`. Check with `nmcli -v` — "command not found" means you're on Server and the unit above is correct.
+`2` means off. `3` means on. Yes, that's backwards.
 
-**Verify**
+SSH server, since Desktop doesn't ship one:
 
 ```bash
-iw dev wlp2s0 get power_save     # Power save: off
+sudo apt install -y openssh-server
+sudo systemctl enable --now ssh
+ss -tlnp | grep :22
 ```
 
----
-
-## Phase 4 — Remote access
-
-### Tailscale
-
-This replaces the DHCP reservation you can't make. The NUC gets a permanent address and name that survive any router behaviour, and you can reach it from outside the house.
-
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --ssh
-```
-
-Open the printed URL, sign in, approve the machine. Install Tailscale on your PC and phone under the same account.
-
-```bash
-tailscale status
-tailscale ip -4
-```
-
-### SSH keys
-
-On your **Windows PC** (skip the keygen if `~/.ssh/id_ed25519.pub` already exists):
+Then, **on your Windows PC** (PowerShell — not on the NUC):
 
 ```powershell
-ssh-keygen -t ed25519 -C "carlos@pc"
+ssh-keygen -t ed25519 -C "carlos@pc"     # empty passphrase is fine for a homelab
 
 ssh carlos@nuc.local "mkdir -p ~/.ssh && chmod 700 ~/.ssh"
 scp $env:USERPROFILE\.ssh\id_ed25519.pub carlos@nuc.local:~/.ssh/authorized_keys
 ssh carlos@nuc.local "chmod 600 ~/.ssh/authorized_keys"
 ```
 
-> That `scp` **overwrites** `authorized_keys`. Correct on a fresh box; if you're adding a second key later, append instead.
+The keygen passphrase is a **new** passphrase encrypting the key file. It is not your NUC password.
 
-**Verify before hardening:** open a new terminal and run `ssh carlos@nuc.local`. It must log in without asking for a password.
+Confirm the key works before hardening:
 
-### Disable password login
+```powershell
+ssh -o PasswordAuthentication=no carlos@nuc.local
+```
 
-**Keep your working SSH session open** while you do this. If you lock yourself out, that session is the only way back short of a monitor and keyboard.
+Then, on the NUC, keeping a working session open:
 
 ```bash
 sudo tee /etc/ssh/sshd_config.d/99-hardening.conf >/dev/null <<'EOF'
@@ -152,13 +144,7 @@ EOF
 sudo sshd -t && sudo systemctl restart ssh
 ```
 
-`sshd -t` validates the config before the restart. If it prints an error, fix it — do not restart.
-
-**Verify** — in a *second* terminal: `ssh carlos@nuc.local` still works. Only then close the first one.
-
----
-
-## Phase 5 — Firewall and patching
+### Phase 4 — Firewall and patching
 
 ```bash
 sudo ufw default deny incoming
@@ -167,142 +153,343 @@ sudo ufw allow OpenSSH
 sudo ufw enable
 
 sudo apt install -y unattended-upgrades
-sudo dpkg-reconfigure -plow unattended-upgrades      # answer Yes
+sudo dpkg-reconfigure -plow unattended-upgrades
 ```
 
-> **The one thing to know about Docker and ufw:** Docker writes its own iptables rules and *bypasses ufw entirely*. A container published on `0.0.0.0` is reachable on your LAN no matter what ufw says. This is why `docker-compose.yml` binds Caddy to `127.0.0.1:8080` and nothing else. Leave it that way.
+Docker writes its own iptables rules and **bypasses ufw**. A container published on `0.0.0.0` is LAN-reachable regardless of what ufw reports. This is why the compose file binds Caddy to `127.0.0.1:8080`. Leave it.
 
-**Verify**
+`sudo ufw status verbose` should list OpenSSH and nothing else — today and forever. If you ever need to open a port, the tunnel is misconfigured.
 
-```bash
-sudo ufw status verbose      # deny (incoming), OpenSSH allowed, nothing else
-```
+### Phase 5 — Docker and Node
 
-At the end of this whole build that list should still contain only OpenSSH. If you ever needed to open a port, the tunnel is misconfigured.
-
----
-
-## Phase 6 — Docker and Node
+**Run these as separate commands, not one paste.** The Docker script contains a `sleep 20` that swallows anything queued behind it on stdin.
 
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER
-newgrp docker
-docker run --rm hello-world
-
-curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-sudo apt install -y nodejs
-node -v            # must be >= 20.19 — Vite 8 refuses older
 ```
 
----
+```bash
+sudo usermod -aG docker $USER
+```
 
-## Phase 7 — Build and serve locally
+Now **log out and back in** — group membership is fixed at login, so existing terminals and desktop sessions keep the old list. `newgrp docker` works as a stopgap in one shell only.
+
+```bash
+docker run --rm hello-world
+```
+
+If that fails with `error getting credentials`, Docker Desktop left a credential helper behind:
+
+```bash
+mv ~/.docker/config.json ~/.docker/config.json.bak
+docker run --rm hello-world
+```
+
+Node, separately:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt install -y nodejs
+node -v            # >= 20.19; Vite 8 refuses older
+```
+
+Verify the lot:
+
+```bash
+id -nG | grep docker
+sudo systemctl is-enabled docker     # "enabled" — this is what makes reboots work
+docker context ls                    # "default" starred, not desktop-linux
+```
+
+> If Docker **Desktop** is installed on this machine, it is the wrong Docker for a server: it runs containers in a VM tied to your login session and will not come back on boot. Install Engine as above and `docker context use default`.
+
+### Phase 6 — Build and serve locally
 
 ```bash
 cd ~
-git clone https://github.com/<you>/<repo>.git promptworks
+git clone https://github.com/carlossalcedo1/PromptWorks.git promptworks
 cd promptworks/frontend
 npm ci
-npm run build          # produces dist/
+npm run build
 ls dist/index.html
 
 cd ../deploy
+cp .env.example .env          # required before ANY compose command, see note
 chmod +x deploy.sh
-docker compose up -d caddy      # caddy only — no tunnel token yet
+docker compose up -d caddy
 ```
 
-**Verify — this is the gate that matters**
+> The compose file declares `TUNNEL_TOKEN` as required, and Compose validates the whole file even when you start a single service. So `.env` must exist with *some* value before `docker compose up -d caddy` will parse. The placeholder in `.env.example` satisfies it.
+
+**The gate that matters:**
 
 ```bash
 curl -I http://127.0.0.1:8080/                       # HTTP/1.1 200
 curl -s http://127.0.0.1:8080/pricing | head -c 120  # index.html, NOT a 404
 ```
 
-The second check is the SPA fallback doing the job `vercel.json` used to. If `/pricing` 404s, react-router will break on every refresh and shared link.
+The second check is the SPA fallback doing the job `vercel.json` used to. A 404 there means react-router breaks on every refresh and shared link.
 
-To see it in a browser, forward the port from your PC — no firewall changes needed:
+To view it in a browser from your PC, without opening any firewall:
 
 ```powershell
 ssh -L 8080:127.0.0.1:8080 carlos@nuc.local
 ```
 
-Then open `http://localhost:8080`.
+`npm run dev` plays no part in any of this. Vite's dev server is for development only. What serves the site is Caddy reading the static files in `dist/` — you could uninstall Node and the site would keep running; you just couldn't build a new version.
 
----
+### Phase 7 — Optional free smoke test
 
-## Phase 8 — Smoke-test the tunnel, free, before buying anything
-
-This proves the entire chain end to end on a throwaway URL. Do it before you spend money on a domain.
+Only worth doing if you don't have a domain yet:
 
 ```bash
 docker run --rm --network promptworks_web \
   cloudflare/cloudflared:latest tunnel --url http://caddy:80
 ```
 
-It prints a `https://<random-words>.trycloudflare.com` URL. Open it **on your phone with Wi-Fi off**. Cell data is the point — loading it over your own Wi-Fi proves nothing about whether the tunnel works.
+Prints a throwaway `trycloudflare.com` URL. Open it on a phone with Wi-Fi off. `Ctrl-C` kills it.
 
-Site loads on cell data → the NUC is publicly reachable, without port forwarding, on a network you don't administer. `Ctrl-C` to stop; the URL dies with it.
+### Phase 8 — Named tunnel on the real domain
 
-Now go buy the domain, with the pre-purchase checklist from the hosting plan.
+In the Cloudflare dashboard:
 
----
+1. Domain must read **Active**.
+2. **Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared**, name it `promptworks-nuc`.
+3. On the install screen, pick the **Docker** tab and copy only the long string after `--token` (starts with `eyJ`). Ignore the rest of the command — you are not installing cloudflared on the host, the container *is* cloudflared. No apt repo, no GPG key, no systemd unit.
+4. **Published application routes** (older UI calls this "Public Hostnames") — add two:
 
-## Phase 9 — Named tunnel on your real domain
+| Subdomain | Domain | Type | URL |
+|---|---|---|---|
+| *(empty)* | yourdomain.com | HTTP | `caddy:80` |
+| `www` | yourdomain.com | HTTP | `caddy:80` |
 
-1. Add the domain to Cloudflare (Add a site → Free plan) and switch nameservers at the registrar. Skip this if you registered at Cloudflare. Wait for the zone to read **Active** — usually minutes, occasionally hours.
-2. **Zero Trust** dashboard → **Networks → Tunnels → Create a tunnel** → **Cloudflared** → name it `promptworks-nuc`.
-3. On the install screen, copy the long token out of the displayed command. Ignore the rest of the command — Compose runs the container.
-4. **Public Hostname** tab → Add:
-   - Subdomain: *(leave empty)* · Domain: `promptworks.tld` · Type: `HTTP` · URL: `caddy:80`
-   - Add a second for subdomain `www`, same service.
+`HTTP` not HTTPS — Caddy listens on plain :80 internally, and both hops around it are already encrypted. `caddy:80` not `localhost` — cloudflared is in its own container, where `localhost` means itself.
 
 On the NUC:
 
 ```bash
 cd ~/promptworks/deploy
-cp .env.example .env
-nano .env                 # paste the token
+nano .env                              # replace placeholder with the real token
+grep TUNNEL_TOKEN .env | wc -c         # few hundred chars = pasted whole
 docker compose up -d
-docker compose ps         # both services Up
-docker compose logs -f cloudflared
+docker compose logs -f cloudflared     # ~4x "Registered tunnel connection"
 ```
 
-Healthy logs say `Registered tunnel connection` about four times — Cloudflare opens redundant connections to different edge locations.
+`.env` must read exactly `TUNNEL_TOKEN=eyJ...` — no quotes, no spaces around `=`, no trailing space. That is the most common reason a correct-looking token yields a DOWN tunnel.
 
-**Verify** — phone, cell data again: `https://promptworks.tld`. Then hard-refresh on a deep link like `https://promptworks.tld/pricing` to confirm the SPA fallback survives the trip through Cloudflare.
-
-The Tunnels dashboard should show **HEALTHY**.
+**Verify** on a phone with Wi-Fi off: the domain, then a hard refresh on a deep link like `/pricing`. Dashboard should read HEALTHY.
 
 ---
 
-## Phase 10 — Make it survive you not being there
+## What we did that turned out to be unnecessary
 
-**Power-cut test.** Nothing here is real until this passes:
+Recorded so a rebuild doesn't repeat them.
 
-```bash
-sudo reboot
-# wait ~60s, then from your PC:
-curl -I https://promptworks.tld
-```
+| Step | Why it was dropped |
+|---|---|
+| **MAC randomization disable** | Was insurance for a DHCP reservation — which needs router admin access we don't have. Bought nothing, and changing the MAC mid-session muddied an unrelated outage. Do not re-add. |
+| **Forcing DNS to 1.1.1.1** | A wrong fix for a misdiagnosed problem. Made things worse by fighting the actual cause. Leave DNS on DHCP. |
+| **Tailscale** | Genuinely useful for remote SSH, but *not required* for the tunnel and it broke DNS on this box (below). Install it later, deliberately, on its own. |
+| **The `ddns.net` hostname** | Dynamic DNS solves "my IP changes." It cannot help when there is no inbound path at all. The tunnel replaces it entirely. |
+| **Port forwarding, UPnP, DMZ** | Never needed. The CGNAT address confirmed inbound was never possible anyway. |
 
-`restart: unless-stopped` should have brought both containers back with no intervention. If it didn't, fix that now rather than discovering it during a power flicker at 3am.
+---
 
-**Deploys.** From then on, shipping is one command:
+## What went wrong, and the lesson
+
+| What happened | Actual cause | Lesson |
+|---|---|---|
+| All DNS resolution died mid-setup; `ping 1.1.1.1` fine, `ping google.com` failed | **Tailscale** was pushing a nameserver at `100.70.0.1` that doesn't answer, overriding the system resolver | The last thing you changed is not automatically the cause. Tailscale had been installed earlier and was invisible in the timeline. |
+| Fix appeared not to work | systemd-resolved had cached the failure, and `--accept-dns=false` doesn't clear DNS already registered on the `tailscale0` link | `sudo resolvectl revert tailscale0 && sudo resolvectl flush-caches` |
+| `/etc/resolv.conf` looked healthy while DNS was broken | It only says *where apps ask* (`127.0.0.53`, the resolved stub). The upstream servers are one layer deeper | `cat /etc/resolv.conf` answers "where do apps ask"; `resolvectl status` answers "where does that go". The second is where problems live. |
+| The `.ts.net` search domain in resolv.conf | Was the actual clue and got skipped past | Read the whole output, not the line you expected to check |
+| Half a pasted command block silently didn't run | `get.docker.com` has a `sleep 20` and consumes stdin | Don't paste multi-command blocks when one of them is an installer script |
+| `permission denied ... docker.sock` after `usermod` | Group membership is set at login; the running desktop session still had the old list | Log out and back in, don't just open a new terminal |
+| `error getting credentials` on `docker run` | Docker **Desktop** had written `credsStore: desktop` into `~/.docker/config.json`, which Engine can't use | Remove the config file; public images need no credentials |
+| `docker compose up -d caddy` refused to parse | The `${TUNNEL_TOKEN:?}` guard is evaluated for the whole file even when starting one service | `cp .env.example .env` before any compose command |
+| Noisy `NO_PUBKEY` errors on every `apt update` | Stale Google Chrome repo key, unrelated to any of this | Cosmetic, but fix it — it makes real failures hard to spot |
+
+The through-line: **three separate small problems overlapped**, and each one made the others harder to see. When something breaks during a setup, resist attributing it to the step you just did — check what else touches that layer first.
+
+---
+
+## Day-2 operations
+
+**Deploy a change.** Commit and push from your PC, then on the NUC:
 
 ```bash
 ~/promptworks/deploy/deploy.sh
 ```
 
-Because Caddy serves `dist` through a bind mount, a finished build is live immediately — no restart, no downtime.
+Pulls, `npm ci`, builds, verifies `dist/index.html`, curls the local endpoint. Because Caddy serves `dist` through a bind mount, the new build is live the instant it lands — no restart, no downtime, no container rebuild. Hard-refresh to get past the browser cache on `index.html`.
 
-**Keep images current.** Monthly, or on a cron:
+**Update the containers.** Monthly, or when Cloudflare nags:
 
 ```bash
 cd ~/promptworks/deploy && docker compose pull && docker compose up -d
 ```
 
-**Monitoring.** Uncomment the `uptime-kuma` service in `docker-compose.yml`, `docker compose up -d`, reach it at `http://127.0.0.1:3001` over an SSH tunnel, and point a monitor at your public URL with email or Discord alerts. Free, and it means you learn the site is down from a notification rather than from a customer.
+**Check health.**
+
+```bash
+docker compose ps
+docker compose logs --tail=50 cloudflared
+curl -I https://yourdomain.com
+```
+
+**Monitoring.** Uncomment `uptime-kuma` in the compose file, reach it at `127.0.0.1:3001` over an SSH tunnel, point a monitor at the public URL with email or Discord alerts. So you learn about downtime from a notification rather than a customer.
+
+---
+
+## Robustness tests worth running
+
+Run these once, now, while nothing depends on the box.
+
+1. **Reboot.** `sudo reboot`, wait 90s, `curl -I https://yourdomain.com`. Must recover with zero intervention.
+2. **Hard power cut.** Pull the plug. Harsher than a reboot — it also tests that the filesystem survives and nothing depended on a clean shutdown.
+3. **Container kill.** `docker kill promptworks-caddy`, wait 15s, `docker compose ps`. Should be back up on its own.
+4. **Network drop.** Unplug the router for 60s. Site should return within a minute of the router, no manual step.
+5. **Idle test.** Leave it untouched overnight, check the site in the morning. This is the one that catches suspend and Wi-Fi power save — the two failure modes that only appear when you're not watching.
+6. **Deploy test.** Change some visible copy, push, run `deploy.sh`, confirm the change is live.
+7. **Deep link + hard refresh** on the public domain. Confirms the SPA fallback survives Cloudflare's edge, not just Caddy.
+
+Also worth turning on in the Cloudflare dashboard now that it's public: **SSL/TLS → Overview → Full**, and **Edge Certificates → Always Use HTTPS**.
+
+---
+
+## Adding more services
+
+The tunnel is not limited to one thing. Each published application route maps a hostname or path to any service on the `promptworks_web` docker network, so Stage 2 slots in without touching the ingress.
+
+**Same hostname, different path** — this is what the API uses, and it means no CORS. Already configured in the Caddyfile:
+
+```
+handle_path /api/*  → reverse_proxy api:8000
+handle              → static files
+```
+
+`handle_path` (not `handle`) strips the prefix, so the browser's `POST /api/attempts` reaches FastAPI as `POST /attempts` and the routes need no prefix of their own.
+
+**Different hostname** — for anything that should be separately addressable:
+
+| Route | Service | Notes |
+|---|---|---|
+| `status.yourdomain.com` | `uptime-kuma:3001` | Put Cloudflare Access in front |
+| `api.yourdomain.com` | `api:8000` | Only if you want it separate from `/api/*` |
+
+**The database does not get a route.** Postgres is in the compose file with **no published port and no tunnel route** — only the internal docker network reaches it, by the hostname `postgres`. A publicly addressable database is how homelabs end up in ransomware writeups. Same for Redis, and for any admin UI that lacks its own authentication.
+
+Rules of thumb as you add services:
+
+- Anything holding data: internal network only, never published, never routed.
+- Anything with an admin panel: behind Cloudflare Access, free for small teams and the groundwork for the Stage 3 SSO story.
+- Anything that costs money per request (`POST /attempts` hitting an LLM): rate-limit at Cloudflare *and* in the application.
+- Back up anything stateful off the NUC. `pg_dump` on a cron. A backup on the same disk is not a backup.
+
+---
+
+## Backend: first bring-up
+
+Everything below is one-time. After this, `./deploy/deploy.sh` does the whole sequence on every deploy.
+
+**1. Fill in `deploy/.env`.** Start from `deploy/.env.example`. The values that must be set or nothing works:
+
+```bash
+cd ~/promptworks/deploy
+cp .env.example .env
+
+# Generate the two secrets. POSTGRES_PASSWORD must also appear inside
+# DATABASE_URL — they are the same credential written twice.
+openssl rand -base64 24    # → POSTGRES_PASSWORD, and into DATABASE_URL
+openssl rand -base64 48    # → JWT_SECRET
+```
+
+Then set `ANTHROPIC_API_KEY` (grading costs real money per call — set `PROMPTWORKS_DAILY_BUDGET_USD` too), and `RESEND_API_KEY` / `RESEND_FROM_EMAIL` if you want the login flow to actually deliver codes. `deploy.sh` checks all of this before it builds anything.
+
+**2. Run the deploy.**
+
+```bash
+cd ~/promptworks
+./deploy/deploy.sh
+```
+
+That builds the frontend and the API image, starts Postgres and waits for it to be genuinely ready, runs `alembic upgrade head`, seeds the scenarios, restarts the API, and verifies `/api/health` answers through Caddy. It refuses to start if the working tree is dirty or `.env` is incomplete.
+
+Flags for iterating: `--backend-only` skips the four-minute npm build, `--frontend-only` skips the API entirely.
+
+**3. Confirm.**
+
+```bash
+./deploy/status.sh
+```
+
+This now reports the API, the database, which migration is applied, and how many scenarios are seeded — so "the site is up but the API is broken" is visible at a glance instead of a mystery.
+
+**4. Smoke test the API by hand.**
+
+```bash
+curl -s http://127.0.0.1:8080/api/health
+
+# Anonymous grading — the homepage "Try one now" path. Costs one API call.
+curl -s -X POST http://127.0.0.1:8080/api/attempts \
+  -H 'Content-Type: application/json' \
+  -d '{"scenario_id":"denial-explanation-email","prompt":"You are a claims correspondent. Write an empathetic email under 150 words explaining the flood exclusion in Section 4.2, cite it, do not admit liability, and close with the appeal deadline."}'
+```
+
+A successful response has six scores, six feedback strings, a total out of 30, and an `attempt_id`. Confirm the row landed:
+
+```bash
+docker compose exec postgres psql -U promptworks -d promptworks \
+  -c "select id, total, tokens_input, cost_usd, created_at from attempts order by created_at desc limit 5;"
+```
+
+For the login flow without a verified Resend domain, set `LOGIN_CODE_DEV_ECHO=1` in `.env` and read the code out of `docker compose logs api`. **Never leave that on** — it writes a live credential into your logs.
+
+---
+
+## Database operations
+
+The `postgres` service holds every row the product has: users, scenarios, and the `attempts` fact table that the score screen, the dashboard and the team heat map all read from. It is the only container here whose data you cannot rebuild by redeploying.
+
+### Migrations
+
+The container starts with an **empty** database. Nothing creates tables on boot — that is deliberate, so no deploy can silently reshape a schema. Migrations are an explicit step, run from the repo root with `DATABASE_URL` pointing at the database:
+
+```bash
+alembic upgrade head
+```
+
+Run this on every deploy that includes a schema change, *before* restarting the API. To see exactly what a migration will do before it touches anything:
+
+```bash
+alembic upgrade head --sql
+```
+
+After changing a model in `backend/db/models.py`, generate the matching revision rather than editing a table by hand — hand-edits are how the models and the database quietly stop agreeing:
+
+```bash
+alembic revision --autogenerate -m "what changed"
+```
+
+### Seeding content
+
+Scenarios and tracks live as JSON files in `data/`, and are loaded by:
+
+```bash
+python scripts/seed_scenarios.py
+```
+
+Every row is upserted by `slug`, so re-running after editing a file updates in place rather than duplicating. `--dry-run` validates the files without connecting to anything, which is the version worth running in CI.
+
+### Backups
+
+`pgdata` is a named volume, so `docker compose down` leaves it alone and only `down -v` destroys it. That is not a backup:
+
+```bash
+docker compose exec -T postgres pg_dump -U promptworks promptworks | gzip > promptworks-$(date +%F).sql.gz
+```
+
+Put that on a cron and copy the output off the NUC. Restore into a running container with `gunzip -c ... | docker compose exec -T postgres psql -U promptworks promptworks`. Test a restore at least once — an untested backup is a hypothesis.
 
 ---
 
@@ -310,23 +497,13 @@ cd ~/promptworks/deploy && docker compose pull && docker compose up -d
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Cloudflare **502** | cloudflared can't reach Caddy | Service URL must be `caddy:80` (the container name), not `localhost`. Both must be on the `promptworks_web` network. |
-| Tunnel shows **DOWN** | Bad or missing token | `docker compose logs cloudflared`. Re-copy the token; check `.env` has no trailing space or quotes. |
-| Works on LAN, not cell data | DNS or hostname mapping | `dig promptworks.tld` should return Cloudflare IPs. Re-check the Public Hostname entry. |
-| **404 on refreshing a subpage** | SPA fallback broken | `try_files {path} /index.html` in the Caddyfile. Test with `curl -s localhost:8080/pricing`. |
-| Deploy done, browser shows old site | `index.html` cached | Hard refresh. Confirm the `no-cache` header. Purge Cloudflare cache if needed. |
-| Port reachable on LAN despite ufw | Docker bypasses ufw | Bind published ports to `127.0.0.1`, as the compose file does. |
-| Random brief outages | Wi-Fi power save | Phase 3. Check `iw dev … get power_save`. |
-| `npm ci` fails on the NUC | Node too old | `node -v` must be ≥ 20.19. |
-
----
-
-## When Stage 2 arrives
-
-Nothing here gets thrown away:
-
-- Add `api` (FastAPI) and `mongo` services to the same `docker-compose.yml`. **Do not publish Mongo's port** — the internal network is the only thing that needs to reach it.
-- Uncomment the `handle /api/*` block in the `Caddyfile` so the API lives behind the same hostname. Same origin, no CORS.
-- Put Cloudflare Access in front of `/admin` — free for small teams, and it's the groundwork for the Stage 3 SSO story.
-- Rate-limit `POST /attempts` at Cloudflare *and* in FastAPI. It is the only endpoint that spends real money.
-- `mongodump` on a cron, copied off the NUC. A backup on the same disk is not a backup.
+| Cloudflare 502 | cloudflared can't reach Caddy | Route must be `caddy:80`, type HTTP. Both containers on `promptworks_web`. |
+| Cloudflare 1016 | No published application route | Connector connected and hostname routed are two separate steps. |
+| Works at `www`, not the apex | Only one route added | Both need their own entry. |
+| Tunnel DOWN | Bad token | `docker compose logs cloudflared`. Check `.env` for quotes, spaces, truncation. |
+| 404 on refreshing a subpage | SPA fallback | `try_files {path} /index.html`. Test `curl -s localhost:8080/pricing`. |
+| Deployed, browser shows old site | `index.html` cached | Hard refresh; confirm the `no-cache` header; purge Cloudflare cache. |
+| Site dead every morning | Machine suspended | Mask the sleep targets. This is the Desktop-install trap. |
+| Random brief outages | Wi-Fi power save | `iw dev … get power_save` must say off. |
+| Names don't resolve, IPs do | Something owns the resolver — Tailscale, a VPN, a DNS override | `resolvectl status`, not `cat /etc/resolv.conf`. |
+| Port reachable on LAN despite ufw | Docker bypasses ufw | Bind published ports to `127.0.0.1`. |

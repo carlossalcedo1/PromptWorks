@@ -1,0 +1,22 @@
+{
+  "slug": "denial-explanation-email",
+  "title": "Denial explanation email",
+  "track": "service-claims",
+  "difficulty": "Intermediate",
+  "brief": "A customer's claim was denied because the policy excludes flood damage. Write the prompt that produces the email to them.",
+  "context": "The insurer is a home insurer. The policyholder filed a claim for flood damage to their home. The claim was denied because the policy excludes flood damage under Section 4.2 - Water and Flood. The policyholder can still file an appeal, and there is a deadline for doing so.",
+  "constraints": [
+    "Empathetic, plain english",
+    "No admission of liability",
+    "Under 150 words",
+    "Cite the policy section",
+    "End with one clear next step"
+  ],
+  "output_format": "Subject: <one line, under 8 words>\nBody: <2-3 short paragraphs, no bullet points>",
+  "role_and_audience": "Policyholder, upset, not an expert",
+  "examples": [
+    "Opening tone to match: \"I'm sorry about the damage to your home, and I know this isn't the answer you were hoping for.\""
+  ],
+  "reference_prompt": "You are a senior claims correspondent at a home insurer. Write an email to a policyholder whose claim was denied because their policy excludes flood damage.\n\nAudience: the policyholder. They are upset and are not an insurance expert. Assume no jargon knowledge.\n\nRequirements:\n- Tone: empathetic and plain English. Acknowledge the loss in the first sentence.\n- Do not admit liability or fault on behalf of the company at any point.\n- Under 150 words in the body.\n- Cite the specific exclusion by policy section number (use \"Section 4.2 - Water and Flood\").\n- Close with exactly one next step: how to file an appeal, with the deadline.\n\nOutput format:\nSubject: <one line, under 8 words>\nBody: <2-3 short paragraphs, no bullet points>\n\nExample of the opening tone: \"I'm sorry about the damage to your home, and I know this isn't the answer you were hoping for.\"",
+  "calibration_examples": []
+}

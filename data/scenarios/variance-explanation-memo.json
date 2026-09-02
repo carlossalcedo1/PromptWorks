@@ -1,0 +1,20 @@
+{
+  "slug": "variance-explanation-memo",
+  "title": "Variance explanation memo",
+  "track": "finance",
+  "difficulty": "Advanced",
+  "brief": "Q3 marketing spend came in 18% over budget. Write the prompt that drafts the variance memo for the CFO.",
+  "context": "Q3 marketing spend came in 18% over budget. The individual variance drivers and their figures are supplied in a table. The memo is for the CFO, who is numerate, reads fast, and dislikes hedging. Some figures in the table may be missing.",
+  "constraints": [
+    "Never invent a number",
+    "Cause before consequence",
+    "One paragraph per driver",
+    "State the forecast impact",
+    "No hedging language"
+  ],
+  "output_format": "A memo: a one-line summary at the top, then one paragraph per driver ordered by size of variance, then a FORECAST IMPACT line.",
+  "role_and_audience": "CFO, numerate, hostile to hedging",
+  "examples": [],
+  "reference_prompt": "You are an FP&A analyst drafting a variance memo for the CFO.\n\nFacts: Q3 marketing spend was 18% over budget. The drivers are in the table below.\n\nAudience: the CFO. Numerate, reads fast, dislikes hedging.\n\nRequirements:\n- Use only the figures in the table. Never invent, round differently, or extrapolate a number. If a figure is missing, write \"not available\".\n- Cause first, consequence second, in every paragraph.\n- One paragraph per driver, ordered by size of variance.\n- Close with the full-year forecast impact as a single number and a single sentence.\n- No hedging words: \"somewhat\", \"may\", \"could potentially\".\n\nOutput format: memo with a one-line summary at the top, then the paragraphs, then FORECAST IMPACT.\n\nData:\n{{variance_table}}",
+  "calibration_examples": []
+}
