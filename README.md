@@ -1,6 +1,6 @@
-# Promptworks
+# PromptWorks
 
-**Work in Progress** 
+**Work in Progress. Stage 2 80% done** 
 
 **A prompt-engineering practice platform. Employees train prompting the way developers train on Exercism: real work scenarios, write a prompt, get scored against a fixed rubric, get a rewrite, do it again.**
 
