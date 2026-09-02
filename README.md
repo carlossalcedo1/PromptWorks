@@ -1,5 +1,7 @@
 # Promptworks
 
+**Work in Progress** 
+
 **A prompt-engineering practice platform. Employees train prompting the way developers train on Exercism: real work scenarios, write a prompt, get scored against a fixed rubric, get a rewrite, do it again.**
 
 Companies bought AI licences for most of the org. That line item is visible. Whether anyone's actual work changed is not — which is worse, because it is the part the board asks about. The default fix is a training vendor selling videos and a 92% "completion rate" that measures attendance, not skill.
@@ -99,7 +101,7 @@ frontend/src/
 
 **Stack:** React 19, Vite, Tailwind v4 (CSS-first `@theme` tokens, no config file), React Router 7. Deploys to Vercel as a static build; `vercel.json` rewrites all paths to `index.html` so client-side routes survive a refresh.
 
-### Planned backend (Stage 2)
+### Planned backend (Stage 2) -> 80% done
 
 FastAPI on Render, MongoDB Atlas, a provider-agnostic LLM adapter behind one interface. Grading becomes rubric + LLM-as-judge returning strict JSON — six integers, six strings. Collections and the rough API surface are specified in the [brief](promptworks-brief.md#data-model-stage-2--mongo-collections).
 
@@ -143,4 +145,4 @@ Carried from the brief, deliberately unresolved:
 
 ---
 
-*Built by Carlos Salcedo. The design brief, value proposition and wireframes in this repo were written before any code, and the application follows them.*
+*Built by Carlos Salcedo & RJ Cooke. Copyright reserved.*
