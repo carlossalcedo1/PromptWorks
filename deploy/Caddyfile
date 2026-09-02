@@ -1,0 +1,59 @@
+# Promptworks — static frontend plus the API behind one hostname.
+#
+# Plain HTTP on :80 is correct here — TLS is terminated at Cloudflare's edge
+# and the tunnel between Cloudflare and this box is already encrypted. Caddy
+# never sees the public internet.
+#
+# The API lives under /api/* on the SAME hostname as the frontend, which means
+# the browser never makes a cross-origin request and CORS never enters the
+# picture. The API's own CORS config still exists as a second line of defence
+# for anything that does call it cross-origin.
+
+:80 {
+	encode zstd gzip
+
+	# handle_path strips the /api prefix before proxying, so the browser's
+	# POST /api/attempts arrives at the app as POST /attempts and FastAPI's
+	# routes need no prefix of their own.
+	#
+	# `handle` blocks are mutually exclusive: a request matching /api/* is
+	# handled here and never falls through to the SPA fallback below. Without
+	# that, try_files would happily answer an API 404 with index.html, and the
+	# frontend would try to parse HTML as JSON.
+	handle_path /api/* {
+		reverse_proxy api:8000 {
+			# The API is not on the public internet, but it is behind a
+			# tunnel and a proxy, so pass through what it needs to see.
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle {
+		root * /srv
+
+		# SPA fallback: react-router owns the routing, so any path that is not
+		# a real file must return index.html. This is the job vercel.json was
+		# doing.
+		try_files {path} /index.html
+		file_server
+
+		# Vite emits content-hashed filenames into /assets, so they can be
+		# cached forever. index.html must never be cached or deploys will not
+		# be seen.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache, must-revalidate"
+	}
+
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

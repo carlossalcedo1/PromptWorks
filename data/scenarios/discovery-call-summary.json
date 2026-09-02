@@ -1,0 +1,19 @@
+{
+  "slug": "discovery-call-summary",
+  "title": "Discovery call summary",
+  "track": "sales",
+  "difficulty": "Intermediate",
+  "brief": "Turn raw discovery-call notes into a summary your sales engineer can use to build a demo.",
+  "context": "Raw notes from a discovery call are supplied as input. The sales engineer who will build the demo has not met this prospect. The notes cover the prospect's stated pain, their needs, and the people involved (decision maker, economic buyer, likely blocker), but may not rank the needs or cover every point.",
+  "constraints": [
+    "Capture the stated pain, in their words",
+    "Separate requirements from nice-to-haves",
+    "Name the decision maker and the blocker",
+    "No invented details"
+  ],
+  "output_format": "A table with columns: Topic | What they said | Demo implication.",
+  "role_and_audience": "Sales engineer, technical, has not met the prospect",
+  "examples": [],
+  "reference_prompt": "You are summarising a discovery call for the sales engineer who will build the demo. They have not met this prospect.\n\nRequirements:\n- Quote the prospect's stated pain verbatim where possible - their words carry more than your paraphrase.\n- Split needs into \"must have\" and \"nice to have\". If the prospect did not rank them, say so.\n- Name the decision maker, the economic buyer and the likely blocker.\n- Do not invent anything. Where the notes are silent, write \"not stated\".\n\nOutput format: a table with columns Topic | What they said | Demo implication.\n\nNotes:\n\"\"\"\n{{notes}}\n\"\"\"",
+  "calibration_examples": []
+}

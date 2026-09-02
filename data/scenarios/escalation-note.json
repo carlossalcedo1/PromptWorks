@@ -1,0 +1,20 @@
+{
+  "slug": "escalation-note",
+  "title": "Escalation note to a supervisor",
+  "track": "service-claims",
+  "difficulty": "Intermediate",
+  "brief": "A frustrated customer has called three times about the same billing error. Write the prompt that produces the internal escalation note for a supervisor.",
+  "context": "A customer has called three times in eight days about a duplicate charge that was never reversed. Each prior contact has a date. The note goes to a supervisor who can authorise a resolution, and the agent has a recommended resolution in mind along with the authority level it needs.",
+  "constraints": [
+    "Internal tone, no customer-facing language",
+    "Lead with the ask",
+    "Include the three prior contacts",
+    "Under 120 words",
+    "State the recommended resolution"
+  ],
+  "output_format": "ASK: <one line>\nHISTORY: <three bullets, one per prior contact, each with its date>\nRECOMMENDATION: <one line>",
+  "role_and_audience": "Supervisor, busy, needs the decision not the story",
+  "examples": [],
+  "reference_prompt": "You are a service agent writing an internal escalation note to your supervisor.\n\nSituation: a customer has called three times in eight days about a duplicate charge that was never reversed.\n\nAudience: a supervisor with 30 seconds. They need the decision, not the narrative.\n\nRequirements:\n- Open with the ask in the first line (BLUF).\n- Summarise the three prior contacts in one line each, with dates.\n- State your recommended resolution and the authority level it needs.\n- Internal register - no customer-facing apology language.\n- Under 120 words total.\n\nOutput format:\nASK: <one line>\nHISTORY: <three bullets>\nRECOMMENDATION: <one line>",
+  "calibration_examples": []
+}

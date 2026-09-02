@@ -1,0 +1,149 @@
+PROMPTWORKS — STAGE 2 BACKEND CHANGELOG
+=========================================
+(LLM grading, API endpoint, cost tracking, model routing, rubric weighting)
+
+
+1. LLM-AS-JUDGE GRADER (llm_grader.py)
+----------------------------------------
+- Built grade_prompt(scenario, submitted_prompt) as the direct replacement
+  for the Stage 1 deterministic lib/grader.js. Same output shape:
+      { scores: {6 dims}, feedback: {6 dims}, total, tokens: {input, output} }
+  No frontend changes needed to consume this.
+
+- Prompt-injection guardrail: the learner's submitted prompt is wrapped in
+  <submitted_prompt> tags with an explicit system-prompt rule that anything
+  inside is DATA to grade, never instructions to follow. Verified with a
+  live test suite (see below) — manipulation attempts score no higher than
+  a genuinely weak prompt.
+
+- Empty/whitespace-only prompts short-circuit to 0/30 with zero API calls
+  — matches the Stage 1 "empty -> 0/30" behavior without spending money.
+
+- Retries once on malformed/invalid JSON, then raises GraderError rather
+  than ever fabricating a score. Total is always recomputed from the
+  per-dimension scores server-side, never trusted from the model's output.
+
+- Fixed a runtime bug: `temperature` is deprecated on current-gen Claude
+  models (Sonnet 5 included) and the API rejects it with a 400 — removed
+  it from the request entirely rather than trying to pass it via extra_body.
+
+- Added model routing support: grade_prompt() now accepts a `model`
+  parameter (defaults to MODEL / Sonnet 5). New HAIKU_MODEL and
+  SONNET_MODEL constants, both overridable via env vars.
+
+- Added rubric_weights to the Scenario dataclass, matching the
+  `rubric_weights` field already specified in the brief's `scenarios`
+  Mongo collection. Defaults to equal weight (1.0) on all six dimensions
+  — mathematically identical to a plain sum, so fully backward compatible.
+  Weighted totals always normalize back to a 30-point max regardless of
+  how skewed the weights are, keeping "x/30" comparable across every
+  scenario on the score screen, learner dashboard, and team heat map.
+
+- Added calibration_examples to Scenario: known-correctly-scored past
+  submissions, fed into the judge's prompt (clearly labeled as calibration
+  data, not something to re-grade) to anchor its sense of scale against
+  your own validated Stage 1 scoring, rather than each model inventing its
+  own interpretation of what a "3/5" looks like.
+
+
+2. FASTAPI BACKEND (main.py)
+----------------------------------------
+- Implemented POST /attempts — the real endpoint replacing the mocked
+  gradePrompt() call in the frontend. Wraps llm_grader.grade_prompt(),
+  returns the same JSON shape, matches the brief's rough API surface.
+
+- Added GET /health for a basic liveness check.
+
+- Added GET /admin/spend for checking today/month/all-time grading cost
+  without opening the log file by hand. NOTE: currently has no auth —
+  add access control before this is ever deployed anywhere public.
+
+- CORS restricted to the local Vite dev server (localhost:5173) for now
+  — update allow_origins to the real deployed frontend URL before shipping.
+
+- Hard per-IP rate limiting on /attempts via slowapi (default 10/minute,
+  overridable via ATTEMPTS_RATE_LIMIT env var) — per the brief's explicit
+  instruction to rate-limit this endpoint hard since it's the only one
+  that costs real money.
+
+- Wired in budget enforcement: check_budget() runs before every grading
+  call and refuses (HTTP 429) once a configured daily cap is hit.
+
+- Added grade_with_escalation(): grades with Haiku first (cheap, fast).
+  If the score lands in an ambiguous band (default 12-20 out of 30,
+  tunable via PROMPTWORKS_ESCALATION_LOW / _HIGH env vars), automatically
+  re-grades with Sonnet and uses that result instead. Bills correctly for
+  every call actually made, including a Haiku call that later gets
+  superseded by Sonnet's result.
+
+
+3. SPEND TRACKING (spend_tracker.py — new file)
+----------------------------------------
+- Local JSONL log (spend_log.jsonl by default) recording every grading
+  call's model, token counts, and computed cost in USD.
+
+- get_total_spend("today" / "month" / "all") reads the log back and sums.
+
+- check_budget() raises BudgetExceededError once today's spend hits an
+  optional PROMPTWORKS_DAILY_BUDGET_USD cap. Unset by default (no cap
+  enforced unless you turn it on).
+
+- Pricing hardcoded per model (Sonnet 5: $3/$15 per million input/output
+  tokens as of the Sep 1, 2026 price change; Haiku 4.5: $1/$5). Update
+  PRICING_PER_MILLION_TOKENS if you switch models or pricing changes.
+
+- This is intentionally a stopgap — a flat file, not a database table.
+  Once Carlos's MongoDB is live, the same interface (record_usage /
+  get_total_spend / check_budget) can write to a real `spend` collection
+  instead, without changing any calling code.
+
+
+4. TEST SUITE (tests/ — new directory)
+----------------------------------------
+- tests/test_llm_grader.py — 21 mocked tests, no API key or network
+  required. Covers: empty-prompt short-circuit, valid parsing, retry-then-
+  fail behavior, rejecting out-of-range/missing/wrong-type scores, the
+  injection guardrail's structural placement, rubric weighting (equal-
+  weight default, skewed weights, normalization to 30), and calibration
+  example formatting/ordering.
+
+- tests/test_spend_tracker.py — 6 tests using a temp log file. Confirms
+  cost math, date-based filtering, and budget cap enforcement.
+
+- tests/test_escalation.py — 5 mocked tests for grade_with_escalation():
+  low/high scores don't escalate, mid-range scores do and Sonnet's result
+  wins, boundary values (12 and 20 exactly) correctly trigger escalation,
+  and empty prompts never escalate or get billed.
+
+- tests/test_injection_live.py — the one test file that makes REAL API
+  calls (costs a few cents to run). Automatically skipped unless
+  ANTHROPIC_API_KEY is set, so it won't run in CI or cost money by
+  accident. Feeds Claude three actual injection attempts and asserts none
+  of them score anywhere near a genuinely well-engineered prompt.
+
+- Current total: 32 passing (mocked) + 4 skip-unless-key (live).
+
+
+5. DEPENDENCIES (requirements.txt)
+----------------------------------------
+anthropic>=0.40.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-dotenv>=1.0.0
+slowapi>=0.1.9
+pytest>=8.0.0
+
+
+6. KNOWN GAPS / NEXT STEPS
+----------------------------------------
+- SCENARIOS in main.py is a placeholder with one demo scenario. Real
+  scenario data still needs to be ported from frontend/src/data/scenarios.js
+  into the Scenario dataclass shape (including real rubric_weights and
+  calibration_examples once available).
+- No database persistence yet — waiting on Carlos's MongoDB setup.
+  Attempts are graded and returned but not currently saved anywhere.
+- /admin/spend has no authentication — fine for local dev only.
+- CORS origins need updating before any real deployment.
+- .env must never be committed — confirmed .gitignore covers it, and
+  confirmed the project folder should NOT live inside a OneDrive-synced
+  path, since OneDrive sync can leak the file outside of Git entirely.

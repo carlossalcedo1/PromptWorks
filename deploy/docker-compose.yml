@@ -1,0 +1,122 @@
+# Promptworks — hosting stack (NUC)
+#
+#   caddy        serves frontend/dist as a static SPA, proxies /api/* to api
+#   cloudflared  holds an outbound tunnel to Cloudflare; no inbound ports needed
+#   uptime-kuma  local monitoring dashboard, not exposed publicly
+#   api          FastAPI: grading, attempts, passwordless auth
+#   postgres     every row the product has; no published port
+#
+# Run from this directory:  docker compose up -d
+#
+# Only caddy and uptime-kuma publish anything, and both bind to 127.0.0.1.
+# api and postgres are reachable only from inside the `web` network.
+
+name: promptworks
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: promptworks-caddy
+    restart: unless-stopped
+    # Bound to localhost ONLY. cloudflared reaches Caddy over the internal
+    # docker network as http://caddy:80, so nothing needs to be exposed to
+    # the LAN. Publishing on 0.0.0.0 here would punch through ufw — Docker
+    # writes its own iptables rules and does not respect ufw.
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../frontend/dist:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - web
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: promptworks-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:?TUNNEL_TOKEN is not set — copy .env.example to .env and paste your tunnel token}
+    depends_on:
+      - caddy
+    networks:
+      - web
+
+  # Monitoring dashboard. Localhost-only, same reasoning as Caddy above.
+  # Reach it from another machine with an SSH tunnel:
+  #   ssh -L 3001:127.0.0.1:3001 carlos@nuc.local
+  # then open http://localhost:3001
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: promptworks-kuma
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - kuma_data:/app/data
+    networks:
+      - web
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: promptworks-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=promptworks
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set in .env}
+      - POSTGRES_DB=promptworks
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Postgres accepts connections for a moment during init and then restarts,
+    # so "the port is open" is not the same as "the database is ready".
+    # pg_isready is, and `api` waits on this rather than crash-looping.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promptworks -d promptworks"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - web
+
+  api:
+    build:
+      # Context is the repo root: the image needs backend/, alembic/,
+      # scripts/ and data/, all of which live above this directory.
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    container_name: promptworks-api
+    restart: unless-stopped
+    # No `ports:` on purpose. Caddy reaches this as http://api:8000 over the
+    # internal network, so the API is never exposed to the LAN — same
+    # reasoning as postgres. Publishing it here would bypass ufw, because
+    # Docker writes its own iptables rules.
+    env_file:
+      - .env
+    environment:
+      # spend_tracker writes a JSONL log that the daily budget cap reads back.
+      # Pointed at the mounted volume so a redeploy doesn't reset the day's
+      # recorded spend to zero and hand out a fresh budget.
+      - PROMPTWORKS_SPEND_LOG=/data/spend_log.jsonl
+    volumes:
+      - api_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - web
+
+networks:
+  web:
+
+volumes:
+  caddy_data:
+  caddy_config:
+  kuma_data:
+  # The database itself. Named volume rather than a bind mount so `docker
+  # compose down` cannot take the data with it — only `down -v` does.
+  pgdata:
+  # spend_tracker's JSONL log. Small, but losing it resets the budget cap.
+  api_data:

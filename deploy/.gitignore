@@ -1,0 +1,2 @@
+# The tunnel token is a credential. Never commit it.
+.env

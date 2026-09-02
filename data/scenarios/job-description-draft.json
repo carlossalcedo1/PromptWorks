@@ -1,0 +1,19 @@
+{
+  "slug": "job-description-draft",
+  "title": "Job description draft",
+  "track": "hr",
+  "difficulty": "Beginner",
+  "brief": "Draft a job description for a mid-level claims adjuster from a hiring manager's rough notes.",
+  "context": "The role is a mid-level claims adjuster. The hiring manager's rough notes are supplied as input and include the salary band. Most candidates will read the posting on a phone. The notes mix genuine requirements with nice-to-haves.",
+  "constraints": [
+    "Inclusive, bias-free language",
+    "Real requirements only, no wish list",
+    "Salary band stated",
+    "Under 400 words"
+  ],
+  "output_format": "Role | What you'll do (5 bullets) | Required | Helpful | Salary & location, with scannable subheadings.",
+  "role_and_audience": "External candidates browsing on a phone",
+  "examples": [],
+  "reference_prompt": "Write a job description for a mid-level claims adjuster from the hiring manager's notes below.\n\nAudience: external candidates, most of them reading on a phone.\n\nRequirements:\n- Inclusive, bias-free language. No \"rockstar\", no \"young and dynamic\", no gendered terms.\n- Requirements section lists only what is genuinely required. Move everything else to \"helpful\".\n- State the salary band exactly as given in the notes.\n- Under 400 words, with scannable subheadings.\n\nOutput format: Role | What you'll do (5 bullets) | Required | Helpful | Salary & location.\n\nNotes: {{notes}}",
+  "calibration_examples": []
+}

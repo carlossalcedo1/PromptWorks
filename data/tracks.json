@@ -1,0 +1,74 @@
+[
+  {
+    "slug": "foundations",
+    "title": "Foundations",
+    "description": "Anatomy of a prompt, context, constraints, format, few-shot, iteration.",
+    "level": "Beginner"
+  },
+  {
+    "slug": "sales",
+    "title": "Sales",
+    "description": "Discovery summaries, objection handling, outreach that is not spam.",
+    "level": "Mixed"
+  },
+  {
+    "slug": "service-claims",
+    "title": "Service & Claims",
+    "description": "Denial explanations, escalation notes, tone under pressure.",
+    "level": "Mixed"
+  },
+  {
+    "slug": "hr",
+    "title": "HR",
+    "description": "Job descriptions, review summaries, policy answers with citations.",
+    "level": "Mixed"
+  },
+  {
+    "slug": "marketing",
+    "title": "Marketing",
+    "description": "Briefs, variant generation, brand-voice constraint.",
+    "level": "Mixed"
+  },
+  {
+    "slug": "finance",
+    "title": "Finance",
+    "description": "Variance explanation, memo drafting, numbers you must not invent.",
+    "level": "Advanced"
+  },
+  {
+    "slug": "engineering",
+    "title": "Engineering",
+    "description": "Spec to code, review prompts, test generation.",
+    "level": "Advanced"
+  },
+  {
+    "slug": "rag-grounding",
+    "title": "RAG & grounding",
+    "description": "Citing sources, refusing to answer, keeping the model on the document.",
+    "level": "Advanced"
+  },
+  {
+    "slug": "agentic-frameworks",
+    "title": "Agentic frameworks",
+    "description": "Multi-step plans, tool use, handoffs, failure recovery.",
+    "level": "Advanced"
+  },
+  {
+    "slug": "evals-data-science",
+    "title": "Evals & data science",
+    "description": "Writing a rubric, judging outputs, measuring drift.",
+    "level": "Advanced"
+  },
+  {
+    "slug": "fine-tune-vs-prompt",
+    "title": "Fine-tune vs. prompt",
+    "description": "When more context is cheaper than more training, and when it is not.",
+    "level": "Advanced"
+  },
+  {
+    "slug": "prompt-injection-safety",
+    "title": "Prompt injection & safety",
+    "description": "Untrusted input, tool permissions, the instructions you must not follow.",
+    "level": "Advanced"
+  }
+]

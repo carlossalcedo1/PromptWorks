@@ -1,0 +1,19 @@
+{
+  "slug": "summarise-a-call",
+  "title": "Summarise a 40-minute call",
+  "track": "foundations",
+  "difficulty": "Beginner",
+  "brief": "You have a transcript of a 40-minute customer call. Write the prompt that turns it into something a colleague can act on.",
+  "context": "A transcript of a 40-minute customer call is supplied as input. A colleague is taking over the account tomorrow and was not on the call. The transcript is the only source: some details (dates in particular) may simply not have been stated on the call.",
+  "constraints": [
+    "Separate facts from action items",
+    "Name the owner of each action",
+    "Flag anything unresolved",
+    "Under 200 words"
+  ],
+  "output_format": "DECISIONS: <bullets>\nACTIONS: <owner - action - date>\nOPEN: <bullets>",
+  "role_and_audience": "A colleague picking up the account tomorrow",
+  "examples": [],
+  "reference_prompt": "Summarise the customer call transcript below for a colleague who is taking over the account tomorrow and was not on the call.\n\nRequirements:\n- Separate what was decided from what was merely discussed.\n- Every action item gets a named owner and a date.\n- Flag every unresolved question under its own heading - do not bury it.\n- Under 200 words.\n- Do not invent anything that is not in the transcript. If a date was not stated, write \"not stated\".\n\nOutput format:\nDECISIONS: <bullets>\nACTIONS: <owner - action - date>\nOPEN: <bullets>\n\nTranscript:\n\"\"\"\n{{transcript}}\n\"\"\"",
+  "calibration_examples": []
+}

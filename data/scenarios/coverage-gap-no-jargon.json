@@ -1,0 +1,19 @@
+{
+  "slug": "coverage-gap-no-jargon",
+  "title": "Explain a coverage gap without jargon",
+  "track": "service-claims",
+  "difficulty": "Intermediate",
+  "brief": "A customer thinks they are covered for a detached garage. They are not. Write the prompt that explains the gap in language they will accept.",
+  "context": "The customer believes their detached garage is covered by their current dwelling policy. It is not: detached structures fall outside the dwelling coverage and need a separate detached-structures endorsement. The dwelling policy does cover the home itself. The endorsement is available to them.",
+  "constraints": [
+    "No insurance jargon",
+    "Explain what IS covered too",
+    "Offer the fix (endorsement)",
+    "Under 180 words"
+  ],
+  "output_format": "Three short paragraphs. No bullets, no headings.",
+  "role_and_audience": "Homeowner, defensive, no insurance vocabulary",
+  "examples": [],
+  "reference_prompt": "You are an insurance service agent. Explain to a homeowner why their detached garage is not covered under their current dwelling policy.\n\nAudience: a homeowner who believes they are covered and will be defensive. No insurance vocabulary.\n\nRequirements:\n- No jargon. If you must use a term (\"other structures\"), define it in the same sentence.\n- Say clearly what IS covered before what is not.\n- Offer the fix: a detached-structures endorsement, and what it changes.\n- Under 180 words.\n\nOutput format: three short paragraphs. No bullets, no headings.",
+  "calibration_examples": []
+}

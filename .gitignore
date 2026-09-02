@@ -1,0 +1,10 @@
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# spend_tracker's local log — runtime data, not source.
+spend_log.jsonl
