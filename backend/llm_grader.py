@@ -40,11 +40,11 @@ import anthropic
 # lockstep — the whole architecture is built on "one definition, every
 # screen," and this is now the second place that definition lives.
 DIMENSIONS: list[str] = [
-    "task_clarity",
-    "context_supplied",
+    "clarity",
+    "context",
     "constraints",
-    "output_format",
-    "role_and_audience",
+    "format",
+    "audience",
     "examples",
 ]
 
@@ -143,11 +143,11 @@ class Scenario:
 # ---------------------------------------------------------------------------
 
 _RUBRIC_DESCRIPTIONS = {
-    "task_clarity": "Is the task the model should perform stated unambiguously?",
-    "context_supplied": "Does the prompt include the background information the scenario provides, rather than assuming the model already knows it?",
+    "clarity": "Is the task the model should perform stated unambiguously?",
+    "context": "Does the prompt include the background information the scenario provides, rather than assuming the model already knows it?",
     "constraints": "Does the prompt state the scenario's constraints explicitly (tone, length, things to avoid, must-includes, etc.)?",
-    "output_format": "Does the prompt specify the shape of the output (structure, sections, format) rather than leaving it to chance?",
-    "role_and_audience": "Does the prompt establish who the model is acting as and who the output is for?",
+    "format": "Does the prompt specify the shape of the output (structure, sections, format) rather than leaving it to chance?",
+    "audience": "Does the prompt establish who the model is acting as and who the output is for?",
     "examples": "Does the prompt supply relevant few-shot examples where the scenario calls for them?",
 }
 
@@ -179,10 +179,10 @@ Output rules:
 - Return ONLY valid JSON, no markdown code fences, no prose before or after.
 - JSON shape exactly:
   {{
-    "scores": {{"task_clarity": int, "context_supplied": int, "constraints": int, \
-"output_format": int, "role_and_audience": int, "examples": int}},
-    "feedback": {{"task_clarity": str, "context_supplied": str, "constraints": str, \
-"output_format": str, "role_and_audience": str, "examples": str}}
+    "scores": {{"clarity": int, "context": int, "constraints": int, \
+"format": int, "audience": int, "examples": int}},
+    "feedback": {{"clarity": str, "context": str, "constraints": str, \
+"format": str, "audience": str, "examples": str}}
   }}
 - Each feedback string: one or two sentences, specific to what the prompt did or didn't \
 do — not generic advice. Reference the scenario's actual requirements.

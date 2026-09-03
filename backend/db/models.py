@@ -44,11 +44,11 @@ from backend.db.base import Base
 # score and feedback columns below are named from it, so at least this file
 # can't drift out of step with itself.
 DIMENSIONS: tuple[str, ...] = (
-    "task_clarity",
-    "context_supplied",
+    "clarity",
+    "context",
     "constraints",
-    "output_format",
-    "role_and_audience",
+    "format",
+    "audience",
     "examples",
 )
 
@@ -212,24 +212,24 @@ class Attempt(Base):
         # dashboards do arithmetic on these columns and one out-of-range row
         # silently skews every aggregate built on them.
         CheckConstraint(
-            "task_clarity_score BETWEEN 0 AND 5",
-            name="ck_attempts_task_clarity_score_range",
+            "clarity_score BETWEEN 0 AND 5",
+            name="ck_attempts_clarity_score_range",
         ),
         CheckConstraint(
-            "context_supplied_score BETWEEN 0 AND 5",
-            name="ck_attempts_context_supplied_score_range",
+            "context_score BETWEEN 0 AND 5",
+            name="ck_attempts_context_score_range",
         ),
         CheckConstraint(
             "constraints_score BETWEEN 0 AND 5",
             name="ck_attempts_constraints_score_range",
         ),
         CheckConstraint(
-            "output_format_score BETWEEN 0 AND 5",
-            name="ck_attempts_output_format_score_range",
+            "format_score BETWEEN 0 AND 5",
+            name="ck_attempts_format_score_range",
         ),
         CheckConstraint(
-            "role_and_audience_score BETWEEN 0 AND 5",
-            name="ck_attempts_role_and_audience_score_range",
+            "audience_score BETWEEN 0 AND 5",
+            name="ck_attempts_audience_score_range",
         ),
         CheckConstraint(
             "examples_score BETWEEN 0 AND 5",
@@ -268,20 +268,20 @@ class Attempt(Base):
     # Real columns rather than one JSON blob: the heat map and the daily org
     # rollups need PERCENTILE_CONT and GROUP BY per dimension, which is cheap
     # against columns and awkward against JSON.
-    task_clarity_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    context_supplied_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    clarity_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    context_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     constraints_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    output_format_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    role_and_audience_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    format_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    audience_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     examples_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
 
-    task_clarity_feedback: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    context_supplied_feedback: Mapped[str] = mapped_column(
+    clarity_feedback: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    context_feedback: Mapped[str] = mapped_column(
         Text, nullable=False, default=""
     )
     constraints_feedback: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    output_format_feedback: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    role_and_audience_feedback: Mapped[str] = mapped_column(
+    format_feedback: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    audience_feedback: Mapped[str] = mapped_column(
         Text, nullable=False, default=""
     )
     examples_feedback: Mapped[str] = mapped_column(Text, nullable=False, default="")

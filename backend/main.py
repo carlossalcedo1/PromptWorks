@@ -141,7 +141,7 @@ def parse_rate_limit(spec: str) -> tuple[int, int]:
 
 app = FastAPI(title="Promptworks API", version="0.2.0")
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler) # type: ignore[arg-type]
 
 
 def _allowed_origins() -> list[str]:
@@ -175,33 +175,34 @@ class AttemptRequest(BaseModel):
 
 
 class DimensionScores(BaseModel):
-    task_clarity: int
-    context_supplied: int
+    clarity: int
+    context: int
     constraints: int
-    output_format: int
-    role_and_audience: int
+    format: int
+    audience: int
     examples: int
 
 
 class DimensionFeedback(BaseModel):
-    task_clarity: str
-    context_supplied: str
+    clarity: str
+    context: str
     constraints: str
-    output_format: str
-    role_and_audience: str
+    format: str
+    audience: str
     examples: str
-
-
-class TokenUsage(BaseModel):
-    input: int
-    output: int
 
 
 class AttemptResponse(BaseModel):
     scores: DimensionScores
     feedback: DimensionFeedback
     total: int
-    tokens: TokenUsage
+    # NOTE: this is the SUBMITTED PROMPT's own estimated token count — same
+    # formula as frontend/src/lib/grader.js's estimateTokens() (~4 chars per
+    # token) — used by ScorePanel's TokenDelta to compare against
+    # scenario.referenceTokens. It is NOT Claude API usage, which is tracked
+    # separately via spend_tracker.py and the attempts row's
+    # tokens_input/tokens_output columns.
+    tokens: int
     # The row this grade was written to. Additive — the Stage 1 frontend
     # ignores it — but a client needs it to later save the attempt as a
     # workflow (`workflows.source_attempt_id`). None if the write failed.
@@ -455,6 +456,19 @@ def complete_profile(
 # ---------------------------------------------------------------------------
 
 
+def _estimate_prompt_tokens(text: str) -> int:
+    """
+    Mirrors frontend/src/lib/grader.js's estimateTokens() exactly (~4 chars
+    per token), so ScorePanel's token-efficiency comparison against
+    scenario.referenceTokens behaves identically to Stage 1. Deliberately
+    NOT the actual Claude API usage — that's tracked separately via
+    spend_tracker.py and the attempts row's tokens_input/tokens_output.
+    """
+    if not text:
+        return 0
+    return max(1, round(len(text.strip()) / 4))
+
+
 @app.post("/attempts", response_model=AttemptResponse)
 @limiter.limit(ATTEMPTS_RATE_LIMIT)
 def create_attempt(
@@ -517,7 +531,13 @@ def create_attempt(
         cost=cost,
     )
 
-    return AttemptResponse(**result, attempt_id=attempt_id)
+    return AttemptResponse(
+        scores=result["scores"],
+        feedback=result["feedback"],
+        total=result["total"],
+        tokens=_estimate_prompt_tokens(body.prompt),
+        attempt_id=attempt_id,
+    )
 
 
 def _record_attempt(
@@ -579,3 +599,4 @@ def _record_attempt(
             exc,
         )
         return None
+ 

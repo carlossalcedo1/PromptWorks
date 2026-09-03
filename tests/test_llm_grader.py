@@ -95,11 +95,11 @@ def test_whitespace_only_prompt_treated_as_empty(demo_scenario):
 
 def test_valid_response_is_parsed_correctly(demo_scenario):
     scores = {
-        "task_clarity": 5,
-        "context_supplied": 4,
+        "clarity": 5,
+        "context": 4,
         "constraints": 3,
-        "output_format": 2,
-        "role_and_audience": 1,
+        "format": 2,
+        "audience": 1,
         "examples": 0,
     }
     payload = _valid_grade_payload(scores)
@@ -174,7 +174,7 @@ def test_persistent_malformed_json_raises_grader_error(demo_scenario):
 
 def test_score_out_of_range_is_rejected(demo_scenario):
     payload = _valid_grade_payload({dim: 3 for dim in DIMENSIONS})
-    payload["scores"]["task_clarity"] = 7  # out of the valid 0-5 range
+    payload["scores"]["clarity"] = 7  # out of the valid 0-5 range
     fake_client = _mock_client(
         _fake_response(json.dumps(payload)),
         _fake_response(json.dumps(payload)),  # retry also fails, same bad data
@@ -200,7 +200,7 @@ def test_missing_dimension_is_rejected(demo_scenario):
 
 def test_non_integer_score_is_rejected(demo_scenario):
     payload = _valid_grade_payload({dim: 3 for dim in DIMENSIONS})
-    payload["scores"]["task_clarity"] = "five"  # wrong type
+    payload["scores"]["clarity"] = "five"  # wrong type
     fake_client = _mock_client(
         _fake_response(json.dumps(payload)),
         _fake_response(json.dumps(payload)),
@@ -261,8 +261,8 @@ def test_partial_weights_fill_in_remaining_dimensions():
 
 
 def test_equal_weights_produce_plain_sum():
-    scores = {"task_clarity": 5, "context_supplied": 4, "constraints": 3,
-              "output_format": 2, "role_and_audience": 1, "examples": 0}
+    scores = {"clarity": 5, "context": 4, "constraints": 3,
+              "format": 2, "audience": 1, "examples": 0}
     weights = {dim: 1.0 for dim in DIMENSIONS}
     assert llm_grader._weighted_total(scores, weights) == sum(scores.values()) == 15
 
@@ -271,8 +271,8 @@ def test_skewed_weights_still_cap_at_30():
     # Max possible score (all 5s) should always normalize to 30, no matter
     # how skewed the weights are — this is the whole point of normalizing.
     scores = {dim: 5 for dim in DIMENSIONS}
-    weights = {"task_clarity": 5.0, "context_supplied": 0.5, "constraints": 0.5,
-               "output_format": 0.5, "role_and_audience": 0.5, "examples": 0.5}
+    weights = {"clarity": 5.0, "context": 0.5, "constraints": 0.5,
+               "format": 0.5, "audience": 0.5, "examples": 0.5}
     assert llm_grader._weighted_total(scores, weights) == 30
 
 
@@ -280,14 +280,14 @@ def test_skewed_weights_change_total_for_uneven_scores():
     # A prompt that nails the heavily-weighted dimension but whiffs on
     # lightly-weighted ones should score higher than the reverse, even
     # though the raw (unweighted) sum would be identical.
-    scores_strong_on_weighted = {"task_clarity": 5, "context_supplied": 0,
-                                  "constraints": 0, "output_format": 0,
-                                  "role_and_audience": 0, "examples": 0}
-    scores_weak_on_weighted = {"task_clarity": 0, "context_supplied": 5,
-                                "constraints": 0, "output_format": 0,
-                                "role_and_audience": 0, "examples": 0}
-    weights = {"task_clarity": 5.0, "context_supplied": 1.0, "constraints": 1.0,
-               "output_format": 1.0, "role_and_audience": 1.0, "examples": 1.0}
+    scores_strong_on_weighted = {"clarity": 5, "context": 0,
+                                  "constraints": 0, "format": 0,
+                                  "audience": 0, "examples": 0}
+    scores_weak_on_weighted = {"clarity": 0, "context": 5,
+                                "constraints": 0, "format": 0,
+                                "audience": 0, "examples": 0}
+    weights = {"clarity": 5.0, "context": 1.0, "constraints": 1.0,
+               "format": 1.0, "audience": 1.0, "examples": 1.0}
 
     total_a = llm_grader._weighted_total(scores_strong_on_weighted, weights)
     total_b = llm_grader._weighted_total(scores_weak_on_weighted, weights)
@@ -297,11 +297,11 @@ def test_skewed_weights_change_total_for_uneven_scores():
 
 
 def test_grade_prompt_applies_scenario_weights(demo_scenario):
-    demo_scenario.rubric_weights = {"task_clarity": 5.0, "context_supplied": 1.0,
-                                     "constraints": 1.0, "output_format": 1.0,
-                                     "role_and_audience": 1.0, "examples": 1.0}
-    scores = {"task_clarity": 5, "context_supplied": 0, "constraints": 0,
-              "output_format": 0, "role_and_audience": 0, "examples": 0}
+    demo_scenario.rubric_weights = {"clarity": 5.0, "context": 1.0,
+                                     "constraints": 1.0, "format": 1.0,
+                                     "audience": 1.0, "examples": 1.0}
+    scores = {"clarity": 5, "context": 0, "constraints": 0,
+              "format": 0, "audience": 0, "examples": 0}
     payload = _valid_grade_payload(scores)
     fake_client = _mock_client(_fake_response(json.dumps(payload)))
 
@@ -350,10 +350,10 @@ def test_calibration_examples_show_correct_scores(demo_scenario):
     demo_scenario.calibration_examples = [
         CalibrationExample(
             prompt="example prompt",
-            scores={"task_clarity": 5, "context_supplied": 4, "constraints": 3,
-                    "output_format": 2, "role_and_audience": 1, "examples": 0},
+            scores={"clarity": 5, "context": 4, "constraints": 3,
+                    "format": 2, "audience": 1, "examples": 0},
         ),
     ]
     message = llm_grader._build_user_message(demo_scenario, "some prompt")
-    assert "task_clarity: 5/5" in message
+    assert "clarity: 5/5" in message
     assert "examples: 0/5" in message

@@ -214,7 +214,7 @@ def test_attempt_grades_and_writes_a_row(db_client, seeded, monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["total"] == 24
-    assert body["scores"]["task_clarity"] == 4
+    assert body["scores"]["clarity"] == 4
     assert body["attempt_id"] is not None
 
     attempt = seeded.get(Attempt, uuid.UUID(body["attempt_id"]))

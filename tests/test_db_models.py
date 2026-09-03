@@ -194,7 +194,7 @@ def test_scenario_jsonb_handles_nested_calibration_examples(db_session):
 
     loaded = db_session.get(Scenario, scenario_id)
     assert len(loaded.calibration_examples) == 1
-    assert loaded.calibration_examples[0]["scores"]["task_clarity"] == 3
+    assert loaded.calibration_examples[0]["scores"]["clarity"] == 3
 
 
 def test_scenario_jsonb_survives_awkward_strings(db_session):
@@ -337,7 +337,7 @@ def test_negative_score_is_rejected(db_session):
     scenario = make_scenario(db_session, slug=f"s-{uuid.uuid4().hex[:8]}")
     expect_integrity_error(
         db_session,
-        Attempt(scenario_id=scenario.id, **attempt_kwargs(task_clarity_score=-1)),
+        Attempt(scenario_id=scenario.id, **attempt_kwargs(clarity_score=-1)),
     )
 
 
