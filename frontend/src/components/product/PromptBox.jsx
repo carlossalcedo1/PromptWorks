@@ -62,7 +62,7 @@ export function PromptBox({
         placeholder={placeholder}
         spellCheck="false"
         className={cn(
-          "w-full resize-y rounded-xl border bg-white p-4 font-mono text-[13px] leading-relaxed",
+          "w-full resize-y rounded-xl border bg-white p-4 font-mono text-base leading-relaxed sm:text-[13px]",
           "placeholder:text-ink-30 focus:outline-none focus:ring-2 focus:ring-signal/30",
           over ? "border-warn" : "border-rule-strong",
         )}

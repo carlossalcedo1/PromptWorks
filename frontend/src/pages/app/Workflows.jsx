@@ -66,7 +66,7 @@ function WorkflowDetail({ workflow }) {
                   id={`var-${v}`}
                   value={values[v] ?? ""}
                   onChange={(e) => setValues({ ...values, [v]: e.target.value })}
-                  className="w-full rounded-lg border border-rule-strong bg-white px-3 py-2 text-sm placeholder:text-ink-30 focus:outline-none focus:ring-2 focus:ring-signal/30"
+                  className="w-full rounded-lg border border-rule-strong bg-white px-3 py-2 text-base placeholder:text-ink-30 focus:outline-none focus:ring-2 focus:ring-signal/30 sm:text-sm"
                   placeholder="—"
                 />
               </div>

@@ -14,8 +14,12 @@ export default function Contact() {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const ready = form.name && form.email && form.fix;
 
+  // 16px, not 15 — iOS Safari auto-zooms the whole page on focusing any text
+  // input under 16px, and that zoom then persists across every page you
+  // navigate to next. Below 16px here looks fine on desktop and silently
+  // breaks every page on an iPhone the moment someone taps into a field.
   const field =
-    "w-full rounded-xl border border-rule-strong bg-white px-4 py-2.5 text-[15px] " +
+    "w-full rounded-xl border border-rule-strong bg-white px-4 py-2.5 text-base " +
     "placeholder:text-ink-30 focus:outline-none focus:ring-2 focus:ring-signal/30";
 
   return (

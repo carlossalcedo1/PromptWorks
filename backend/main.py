@@ -49,10 +49,10 @@ from backend.auth.codes import (
     send_login_code_email,
     verify_login_code,
 )
-from backend.auth.dependencies import get_current_user_optional
+from backend.auth.dependencies import get_current_user, get_current_user_optional
 from backend.auth.jwt import issue_token
 from backend.db.base import get_db
-from backend.db.models import Attempt, LoginCode, User
+from backend.db.models import Attempt, LoginCode, Track, User
 from backend.db.models import Scenario as ScenarioRow
 from backend.llm_grader import MODEL, DIMENSIONS, GraderError, Scenario, grade_prompt
 from backend.llm_grader import CalibrationExample
@@ -226,6 +226,23 @@ class TokenResponse(BaseModel):
     is_new_user: bool = False
 
 
+class CompleteProfileRequest(BaseModel):
+    first_name: str = Field(min_length=1, max_length=120)
+    last_name: str = Field(min_length=1, max_length=120)
+    # The frontend's track catalogue (frontend/src/data/tracks.js) and the
+    # seeded `tracks` table (data/tracks.json) share slugs by convention —
+    # this is the one place that convention gets checked at runtime.
+    track_slug: str
+
+
+class ProfileResponse(BaseModel):
+    user_id: str
+    email: str
+    first_name: str | None = None
+    last_name: str | None = None
+    track_slug: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Routes — health and admin
 # ---------------------------------------------------------------------------
@@ -379,6 +396,57 @@ def verify_code(
         email=user.email,
         org_id=str(user.org_id) if user.org_id else None,
         is_new_user=is_new_user,
+    )
+
+
+@app.get("/auth/me", response_model=ProfileResponse)
+def me(user: User = Depends(get_current_user)) -> ProfileResponse:
+    """The signed-in user's own profile.
+
+    The JWT only carries email and user_id (see issue_token) — first/last
+    name and track live in the database, not the token, so a client that
+    wants them (the header's initials, for one) has to ask here rather than
+    decode the token itself.
+    """
+    return ProfileResponse(
+        user_id=str(user.id),
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        track_slug=user.primary_track.slug if user.primary_track else None,
+    )
+
+
+@app.post("/auth/complete-profile", response_model=ProfileResponse)
+def complete_profile(
+    body: CompleteProfileRequest,
+    session: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ProfileResponse:
+    """First/last name and a starting track, collected right after a first
+    sign-up rather than on the request-code/verify-code forms themselves —
+    those two stay just an email, so returning users never see extra fields.
+
+    Requires a real token (not the optional dependency /attempts uses): this
+    writes to a specific person's row, so there must be one.
+    """
+    track = session.scalars(
+        select(Track).where(Track.slug == body.track_slug)
+    ).first()
+    if track is None:
+        raise HTTPException(status_code=422, detail="Unknown track.")
+
+    user.first_name = body.first_name.strip()
+    user.last_name = body.last_name.strip()
+    user.primary_track_id = track.id
+    session.commit()
+
+    return ProfileResponse(
+        user_id=str(user.id),
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        track_slug=track.slug,
     )
 
 

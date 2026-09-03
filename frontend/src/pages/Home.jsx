@@ -425,6 +425,7 @@ export default function Home() {
           <div className="mt-9 flex flex-wrap justify-center gap-3">
             <Button
               to="/onboarding"
+              variant="custom"
               size="lg"
               className="bg-paper text-ink hover:bg-paper-2"
             >
@@ -432,6 +433,7 @@ export default function Home() {
             </Button>
             <Button
               to="/contact"
+              variant="custom"
               size="lg"
               className="border border-paper/30 text-paper hover:bg-paper/10"
             >

@@ -83,14 +83,14 @@ export default function Tracks() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search scenarios…"
-              className="w-56 rounded-full border border-rule-strong bg-white px-4 py-1.5 text-sm placeholder:text-ink-30 focus:outline-none focus:ring-2 focus:ring-signal/30"
+              className="w-56 rounded-full border border-rule-strong bg-white px-4 py-1.5 text-base placeholder:text-ink-30 focus:outline-none focus:ring-2 focus:ring-signal/30 sm:text-sm"
             />
             <label className="flex items-center gap-2 text-[13px] text-ink-50">
               Sort
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
-                className="rounded-lg border border-rule-strong bg-white px-2.5 py-1 text-[13px] text-ink"
+                className="rounded-lg border border-rule-strong bg-white px-2.5 py-1 text-base text-ink sm:text-[13px]"
               >
                 {SORTS.map((s) => (
                   <option key={s.key} value={s.key}>

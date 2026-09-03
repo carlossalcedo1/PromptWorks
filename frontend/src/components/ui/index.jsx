@@ -17,6 +17,12 @@ const VARIANTS = {
   bordered: "border border-rule-strong text-ink hover:border-ink hover:bg-paper-2",
   signal: "bg-signal text-white hover:bg-signal-ink",
   ghost: "text-ink-70 hover:text-ink hover:bg-paper-2",
+  // No colour classes at all. For a button on a surface none of the above
+  // were designed for (e.g. the dark final-CTA section) — pass colour
+  // entirely via className instead of fighting the default variant's
+  // classes for the same properties, which Tailwind resolves by build
+  // order rather than anything visible in this file.
+  custom: "",
 };
 
 const SIZES = {

@@ -33,7 +33,7 @@ export default function Team() {
           <select
             value={range}
             onChange={(e) => setRange(e.target.value)}
-            className="rounded-lg border border-rule-strong bg-white px-3 py-1.5 text-sm"
+            className="rounded-lg border border-rule-strong bg-white px-3 py-1.5 text-base sm:text-sm"
           >
             {RANGES.map((r) => (
               <option key={r}>{r}</option>
