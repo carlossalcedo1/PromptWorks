@@ -37,6 +37,11 @@
   html {
     scroll-behavior: smooth;
   }
+  /* The header is sticky, so a section jumped to by #hash would otherwise
+     land underneath it. */
+  section[id] {
+    scroll-margin-top: 6.5rem;
+  }
   body {
     background-color: var(--color-paper);
     color: var(--color-ink);
