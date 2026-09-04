@@ -1,8 +1,15 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { RUBRIC_MAX } from "../../data/rubric.js";
 import { RubricBreakdown } from "../../components/product/RubricBreakdown.jsx";
 import { Button, Chip } from "../../components/ui/index.jsx";
-import { gradeFreeform, ApiError } from "../../lib/api.js";
+import { useAuth } from "../../lib/auth.jsx";
+import {
+  gradeFreeform,
+  getLibraryCategories,
+  postLibraryPrompt,
+  ApiError,
+} from "../../lib/api.js";
 
 const PLACEHOLDER =
   "Paste a prompt you actually use for work — a real one, not a practice " +
@@ -16,15 +23,28 @@ const PLACEHOLDER =
  * tracked skill score on /dashboard or the team heat map.
  */
 export default function FreeformCheck() {
+  const { session } = useAuth();
   const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const [showPostForm, setShowPostForm] = useState(false);
+  const [postTitle, setPostTitle] = useState("");
+  const [postCategory, setPostCategory] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState("");
+  const [posted, setPosted] = useState(false);
 
   async function run() {
     if (!prompt.trim() || running) return;
     setRunning(true);
     setError("");
+    setCopied(false);
+    setShowPostForm(false);
+    setPosted(false);
     try {
       const r = await gradeFreeform(prompt);
       setResult(r);
@@ -37,9 +57,54 @@ export default function FreeformCheck() {
     }
   }
 
+  async function openPostForm() {
+    setShowPostForm(true);
+    setPostError("");
+    if (categories.length === 0) {
+      try {
+        setCategories(await getLibraryCategories());
+      } catch {
+        // Leave categories empty — the select will just show nothing to
+        // pick, and submitting will fail with a clear server-side message
+        // rather than a confusing client-side crash.
+      }
+    }
+  }
+
+  async function submitToLibrary(e) {
+    e.preventDefault();
+    if (!postTitle.trim() || !postCategory || posting) return;
+    setPosting(true);
+    setPostError("");
+    try {
+      await postLibraryPrompt(session.token, {
+        title: postTitle.trim(),
+        promptTemplate: result.improved_prompt,
+        category: postCategory,
+      });
+      setPosted(true);
+      setShowPostForm(false);
+    } catch (err) {
+      setPostError(err instanceof ApiError ? err.message : "Something went wrong.");
+    } finally {
+      setPosting(false);
+    }
+  }
+
   function reset() {
     setResult(null);
     setError("");
+    setCopied(false);
+  }
+
+  async function copyImproved() {
+    try {
+      await navigator.clipboard.writeText(result.improved_prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
   }
 
   return (
@@ -97,6 +162,9 @@ export default function FreeformCheck() {
               <p className="mt-2 text-[13px] text-ink-50">
                 Not counted toward your tracked score
               </p>
+              <p className="mt-1 text-[13px] tabular-nums text-ink-50">
+                {result.tokens} tokens · ${result.cost_usd.toFixed(6)} — real cost, not an estimate
+              </p>
             </div>
             <Button variant="bordered" size="sm" onClick={reset}>
               Check another prompt
@@ -109,6 +177,109 @@ export default function FreeformCheck() {
               rather than fit to a specific scenario.
             </p>
             <RubricBreakdown scores={result.scores} feedback={result.feedback} />
+          </div>
+
+          <div className="mt-8 border-t border-rule pt-6">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Improved prompt</p>
+              <button
+                onClick={copyImproved}
+                className="rounded-full border border-rule-strong px-3 py-1 text-[12.5px] transition-colors hover:border-ink"
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <p className="mt-1.5 text-[13px] text-ink-50">
+              Fixes the gaps above while keeping your original intent. Paste
+              this straight into whatever LLM you're using.
+            </p>
+            <pre className="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-xl border border-signal/25 bg-signal-wash/50 p-4 font-mono text-[12.5px] leading-relaxed text-ink">
+              {result.improved_prompt}
+            </pre>
+
+            <div className="mt-4">
+              {posted ? (
+                <p className="text-[13px] text-good">
+                  Posted to the{" "}
+                  <Link to="/library" className="underline underline-offset-4">
+                    library
+                  </Link>
+                  .
+                </p>
+              ) : session ? (
+                !showPostForm ? (
+                  <Button variant="bordered" size="sm" onClick={openPostForm}>
+                    Post this to the library
+                  </Button>
+                ) : (
+                  <form
+                    onSubmit={submitToLibrary}
+                    className="mt-2 space-y-3 rounded-xl border border-rule bg-paper-2/40 p-4"
+                  >
+                    <div>
+                      <label className="mb-1 block text-[13px] font-medium" htmlFor="post-title">
+                        Title
+                      </label>
+                      <input
+                        id="post-title"
+                        value={postTitle}
+                        onChange={(e) => setPostTitle(e.target.value)}
+                        placeholder="Give this prompt a short name"
+                        className="w-full rounded-lg border border-rule-strong bg-white px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-signal/30 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[13px] font-medium" htmlFor="post-category">
+                        Category
+                      </label>
+                      <select
+                        id="post-category"
+                        value={postCategory}
+                        onChange={(e) => setPostCategory(e.target.value)}
+                        className="w-full rounded-lg border border-rule-strong bg-white px-3 py-2 text-base sm:text-sm"
+                      >
+                        <option value="">Select…</option>
+                        {categories.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {postError && <p className="text-[13px] text-red-600">{postError}</p>}
+
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="bordered"
+                        size="sm"
+                        type="button"
+                        onClick={() => setShowPostForm(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        as="button"
+                        type="submit"
+                        variant="filled"
+                        size="sm"
+                        disabled={!postTitle.trim() || !postCategory || posting}
+                      >
+                        {posting ? "Posting…" : "Publish"}
+                      </Button>
+                    </div>
+                  </form>
+                )
+              ) : (
+                <Link
+                  to="/login"
+                  state={{ from: "/check" }}
+                  className="text-[13px] text-ink-70 underline underline-offset-4 hover:text-ink"
+                >
+                  Log in to post this to the library
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       )}

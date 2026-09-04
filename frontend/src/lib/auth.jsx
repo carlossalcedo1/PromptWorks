@@ -43,7 +43,13 @@ export function AuthProvider({ children }) {
         if (cancelled) return;
         setSession((prev) =>
           prev && prev.token === session.token
-            ? { ...prev, firstName: profile.first_name, lastName: profile.last_name }
+            ? {
+                ...prev,
+                firstName: profile.first_name,
+                lastName: profile.last_name,
+                level: profile.level,
+                streak: profile.streak,
+              }
             : prev,
         );
       })

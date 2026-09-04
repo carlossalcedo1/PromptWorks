@@ -2,10 +2,11 @@ import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { SCENARIOS, scenarioBySlug } from "../../data/scenarios.js";
 import { trackBySlug } from "../../data/tracks.js";
-import { gradePrompt, mockOutput } from "../../lib/grader.js";
-import { PromptBox } from "../../components/product/PromptBox.jsx";
+import { gradeAttempt, ApiError } from "../../lib/api.js";
+import { computeHeadline } from "../../lib/headline.js";
+import { useAuth } from "../../lib/auth.jsx";
 import { ScorePanel } from "../../components/product/ScorePanel.jsx";
-import { Button, Chip, cn } from "../../components/ui/index.jsx";
+import { Button, Chip } from "../../components/ui/index.jsx";
 
 /**
  * Remount on scenario change rather than resetting six pieces of state in an
@@ -18,14 +19,14 @@ export default function Player() {
 
 function PlayerScreen({ slug }) {
   const navigate = useNavigate();
+  const { session } = useAuth();
   const scenario = scenarioBySlug(slug) ?? SCENARIOS[0];
   const track = trackBySlug(scenario.track);
 
   const [prompt, setPrompt] = useState("");
-  const [model, setModel] = useState("claude-sonnet");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
-  const [output, setOutput] = useState("");
+  const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(1);
   const [saved, setSaved] = useState(false);
   const scoreRef = useRef(null);
@@ -35,22 +36,28 @@ function PlayerScreen({ slug }) {
     return SCENARIOS[(i + 1) % SCENARIOS.length];
   }, [scenario.slug]);
 
-  const run = () => {
+  async function run() {
+    if (!prompt.trim() || running) return;
     setRunning(true);
-    setTimeout(() => {
-      const r = gradePrompt(prompt, scenario);
-      setResult(r);
-      setOutput(mockOutput(prompt, scenario, r));
-      setRunning(false);
+    setError("");
+    try {
+      const r = await gradeAttempt(scenario.slug, prompt, session?.token);
+      setResult({ ...r, headline: computeHeadline(r.scores, r.total) });
       requestAnimationFrame(() =>
         scoreRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
       );
-    }, 650);
-  };
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Something went wrong. Please try again.",
+      );
+    } finally {
+      setRunning(false);
+    }
+  }
 
   const retry = () => {
     setResult(null);
-    setOutput("");
+    setError("");
     setSaved(false);
     setAttempt((a) => a + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -64,7 +71,7 @@ function PlayerScreen({ slug }) {
           Practice
         </Link>
         <span className="text-ink-30">›</span>
-        <Link to="/tracks" className="hover:text-ink">
+        <Link to="/scenarios" className="hover:text-ink">
           {track?.title ?? scenario.track}
         </Link>
         <span className="text-ink-30">›</span>
@@ -97,26 +104,20 @@ function PlayerScreen({ slug }) {
           <p className="mt-6 text-xs font-semibold uppercase tracking-wider text-ink-50">
             Constraints
           </p>
+          {/* No per-constraint checkmarks: the real judge returns six
+              dimension scores, not a boolean per constraint, so there's no
+              honest per-item "met" signal to show anymore. A plain list is
+              more accurate than a fabricated checkmark would be. */}
           <ul className="mt-2.5 space-y-2">
-            {scenario.constraints.map((c, i) => {
-              const met = result?.met?.[i];
-              return (
-                <li key={c.label} className="flex items-start gap-2.5 text-sm">
-                  <span
-                    className={cn(
-                      "mt-[3px] grid h-4 w-4 shrink-0 place-items-center rounded text-[10px] font-bold transition-colors",
-                      met
-                        ? "bg-signal text-white"
-                        : "border border-rule-strong text-transparent",
-                    )}
-                    aria-hidden="true"
-                  >
-                    ✓
-                  </span>
-                  <span className={met ? "text-ink" : "text-ink-70"}>{c.label}</span>
-                </li>
-              );
-            })}
+            {scenario.constraints.map((c) => (
+              <li key={c.label} className="flex items-start gap-2.5 text-sm">
+                <span
+                  className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-ink-30"
+                  aria-hidden="true"
+                />
+                <span className="text-ink-70">{c.label}</span>
+              </li>
+            ))}
           </ul>
 
           <div className="mt-6 border-t border-rule pt-4">
@@ -134,43 +135,42 @@ function PlayerScreen({ slug }) {
           )}
         </aside>
 
-        {/* Right pane — prompt, output, score */}
+        {/* Right pane — prompt, score */}
         <div className="min-w-0 space-y-6">
           <div className="rounded-2xl border border-rule bg-white p-6">
-            <PromptBox
-              value={prompt}
-              onChange={setPrompt}
-              model={model}
-              onModelChange={setModel}
-              onRun={run}
-              running={running}
+            <label htmlFor="prompt" className="text-sm font-medium">
+              Your prompt
+            </label>
+            <textarea
+              id="prompt"
               rows={14}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Write the prompt that produces the deliverable described on the left…"
+              spellCheck="false"
+              className="mt-2.5 w-full resize-y rounded-xl border border-rule-strong bg-white p-4 font-mono text-base leading-relaxed placeholder:text-ink-30 focus:outline-none focus:ring-2 focus:ring-signal/30 sm:text-[13px]"
             />
+
+            {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+
+            <div className="mt-3 flex justify-end">
+              <Button onClick={run} disabled={!prompt.trim() || running} variant="filled" size="md">
+                {running ? "Grading…" : "Run prompt"}
+              </Button>
+            </div>
           </div>
 
-          {(running || output) && (
+          {result && (
             <div className="rounded-2xl border border-rule bg-white p-6">
               <p className="text-xs font-semibold uppercase tracking-wider text-ink-50">
-                Model output
+                Cost of this run
               </p>
-              {running ? (
-                <div className="mt-4 space-y-2.5" aria-live="polite">
-                  {[100, 92, 78].map((w, i) => (
-                    <div
-                      key={i}
-                      className="h-3 animate-pulse rounded bg-paper-2"
-                      style={{ width: `${w}%` }}
-                    />
-                  ))}
-                  <p className="pt-2 text-[13px] text-ink-30">
-                    Running against {model}, then grading…
-                  </p>
-                </div>
-              ) : (
-                <pre className="mt-3 whitespace-pre-wrap font-sans text-[15px] leading-relaxed text-ink-70">
-                  {output}
-                </pre>
-              )}
+              <p className="mt-1.5 text-sm text-ink-70">
+                <span className="font-medium tabular-nums text-ink">
+                  ${result.cost_usd.toFixed(6)}
+                </span>{" "}
+                — the real cost of this grading call, not an estimate.
+              </p>
             </div>
           )}
 
@@ -180,7 +180,12 @@ function PlayerScreen({ slug }) {
                 result={result}
                 scenario={scenario}
                 promptText={prompt}
-                output={output}
+                output={
+                  "Live model output isn't available yet in this version — the " +
+                  "grader evaluates your prompt directly rather than running it " +
+                  "against a model first. This panel will show a real generated " +
+                  "response in a future update."
+                }
                 saved={saved}
                 onRetry={retry}
                 onNext={() => navigate(`/practice/${next.slug}`)}

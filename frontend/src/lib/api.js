@@ -99,6 +99,14 @@ export function getDashboard(token) {
   return get("/dashboard", token);
 }
 
+/** Real scenario-based grading — POST /attempts. token is optional: an
+ *  anonymous visitor can still grade (the homepage widget depends on this),
+ *  but a signed-in user's token attributes the attempt to their account so
+ *  it counts toward /dashboard. */
+export function gradeAttempt(scenarioId, prompt, token) {
+  return post("/attempts", { scenario_id: scenarioId, prompt }, token);
+}
+
 /** Freeform grading — no scenario_id, no signup required (no token passed
  *  here on purpose). Scores general prompt-engineering craft on the same
  *  six dimensions used everywhere else, but this is NOT written to the
@@ -106,6 +114,46 @@ export function getDashboard(token) {
  *  backend/main.py's /grade/freeform route for why. */
 export function gradeFreeform(prompt) {
   return post("/grade/freeform", { prompt });
+}
+
+/** The fixed set of library categories — single source of truth lives on
+ *  the backend (main.py's LIBRARY_CATEGORIES) so this never drifts out of
+ *  sync with what posting actually accepts. */
+export function getLibraryCategories() {
+  return get("/library/categories");
+}
+
+/** Browse the public prompt library. Fully open — token is optional, only
+ *  affects whether has_voted is meaningful on each result. */
+export function listLibraryPrompts({ sort, category, q } = {}, token) {
+  const params = new URLSearchParams();
+  if (sort) params.set("sort", sort);
+  if (category) params.set("category", category);
+  if (q) params.set("q", q);
+  const qs = params.toString();
+  return get(`/library/prompts${qs ? `?${qs}` : ""}`, token);
+}
+
+/** Publish a prompt to the public library. Requires a token — the backend
+ *  401s without one. */
+export function postLibraryPrompt(token, { title, promptTemplate, category }) {
+  return post(
+    "/library/prompts",
+    { title, prompt_template: promptTemplate, category },
+    token,
+  );
+}
+
+/** Upvote a library prompt. Requires a token; idempotent server-side, so
+ *  calling this twice from the same account is safe and harmless. */
+export function upvoteLibraryPrompt(token, promptId) {
+  return post(`/library/prompts/${promptId}/upvote`, {}, token);
+}
+
+/** Marks a prompt as used (e.g. after copying it). No token required —
+ *  using a prompt, unlike posting or voting, doesn't need an account. */
+export function markLibraryPromptUsed(promptId) {
+  return post(`/library/prompts/${promptId}/use`, {});
 }
 
 export { ApiError };

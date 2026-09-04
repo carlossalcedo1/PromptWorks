@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { Logo } from "./Logo.jsx";
 import { Button, cn } from "../ui/index.jsx";
-import { LEARNER } from "../../data/org.js";
 import { useAuth } from "../../lib/auth.jsx";
 import { useClickOutside } from "../../lib/useClickOutside.js";
 import { AccountMenu } from "./AccountMenu.jsx";
@@ -12,6 +11,7 @@ import { AccountMenu } from "./AccountMenu.jsx";
 const NAV = [
   { to: "/practice", label: "Practice" },
   { to: "/check", label: "Check a prompt" },
+  { to: "/library", label: "Prompt Library" },
   { to: "/workflows", label: "Workflows" },
   { to: "/team", label: "Team" },
 ];
@@ -103,23 +103,27 @@ export function AppHeader() {
 
           {session ? (
             <>
-              {/* Streak + level — the Duolingo retention loop, borrowed without
-                  the style. Still LEARNER mock data (org.js) either way; only
-                  the identity below is real. Hidden below sm so a phone-width
-                  header is just nav + avatar, not four things fighting for
-                  space. */}
-              <span className="hidden items-center gap-1.5 text-[13px] font-medium text-ink-70 sm:flex">
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-signal" aria-hidden="true">
-                  <path
-                    d="M8 1.5s3.5 3 3.5 6a3.5 3.5 0 1 1-7 0c0-1 .5-2 1-2.5 0 1 .5 1.5 1 1.5 .8 0 .5-3 1.5-5z"
-                    fill="currentColor"
-                  />
-                </svg>
-                {LEARNER.streak} day streak
-              </span>
-              <span className="hidden rounded-full border border-rule-strong px-2.5 py-0.5 text-[13px] font-medium sm:inline">
-                Lvl {LEARNER.level}
-              </span>
+              {/* Streak + level — the Duolingo retention loop, borrowed
+                  without the style. Real values from the session (see
+                  lib/auth.jsx, populated via GET /auth/me). Hidden until
+                  loaded rather than showing a fake number, and hidden below
+                  sm so a phone-width header is just nav + avatar. */}
+              {session.streak != null && (
+                <span className="hidden items-center gap-1.5 text-[13px] font-medium text-ink-70 sm:flex">
+                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-signal" aria-hidden="true">
+                    <path
+                      d="M8 1.5s3.5 3 3.5 6a3.5 3.5 0 1 1-7 0c0-1 .5-2 1-2.5 0 1 .5 1.5 1 1.5 .8 0 .5-3 1.5-5z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                  {session.streak} day streak
+                </span>
+              )}
+              {session.level != null && (
+                <span className="hidden rounded-full border border-rule-strong px-2.5 py-0.5 text-[13px] font-medium sm:inline">
+                  Lvl {session.level}
+                </span>
+              )}
 
               <AccountMenu session={session} />
             </>

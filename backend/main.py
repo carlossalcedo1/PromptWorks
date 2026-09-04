@@ -38,7 +38,8 @@ from pydantic import BaseModel, EmailStr, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from backend.auth.codes import (
@@ -53,7 +54,7 @@ from backend.auth.codes import (
 from backend.auth.dependencies import get_current_user, get_current_user_optional
 from backend.auth.jwt import issue_token
 from backend.db.base import get_db
-from backend.db.models import Attempt, LoginCode, Track, User, Workflow
+from backend.db.models import Attempt, LoginCode, Track, User, Workflow, WorkflowVote
 from backend.db.models import Scenario as ScenarioRow
 from backend.llm_grader import MODEL, DIMENSIONS, GraderError, Scenario, grade_prompt
 from backend.llm_grader import CalibrationExample, grade_freeform_prompt, HAIKU_MODEL
@@ -208,6 +209,51 @@ class FreeformGradeResponse(BaseModel):
     # Same prompt-length-estimate contract as AttemptResponse.tokens — see
     # that model's comment for why this isn't API usage.
     tokens: int
+    improved_prompt: str
+    cost_usd: float = 0.0
+
+
+# A fixed set rather than free-tag text, so category filtering on the
+# library stays a simple equality check instead of needing a whole
+# tag-normalization system. Chosen to roughly mirror the domain spread
+# already used in scripts/eval_grader.py's freeform test battery.
+LIBRARY_CATEGORIES = [
+    "Writing",
+    "Code",
+    "Marketing",
+    "Data & Analysis",
+    "Business",
+    "Creative",
+    "Other",
+]
+
+
+class LibraryPromptCreate(BaseModel):
+    title: str = Field(max_length=255)
+    prompt_template: str = Field(max_length=8000)
+    category: str
+
+
+class LibraryPromptOut(BaseModel):
+    id: str
+    title: str
+    prompt_template: str
+    category: str
+    # Display name only — first name if set, otherwise the part of the
+    # email before @. Never the raw email: this is a PUBLIC listing.
+    author_name: str
+    usage_count: int
+    upvote_count: int
+    created_at: str
+    # Whether the CURRENT requester has already upvoted this — only
+    # meaningful when a token was sent; always False for an anonymous
+    # browser, which is the honest answer for someone with no vote on record.
+    has_voted: bool = False
+
+
+class LibraryPromptListResponse(BaseModel):
+    prompts: list[LibraryPromptOut]
+    total: int
 
 
 class AttemptResponse(BaseModel):
@@ -225,6 +271,11 @@ class AttemptResponse(BaseModel):
     # ignores it — but a client needs it to later save the attempt as a
     # workflow (`workflows.source_attempt_id`). None if the write failed.
     attempt_id: str | None = None
+    # The REAL cost of this grading call in USD, already computed for the
+    # spend log — was previously calculated and thrown away rather than
+    # returned. 0.0 for the empty-prompt short-circuit, which makes no
+    # API call.
+    cost_usd: float = 0.0
 
 
 class RequestCodeRequest(BaseModel):
@@ -260,6 +311,8 @@ class ProfileResponse(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     track_slug: str | None = None
+    level: int
+    streak: int
 
 
 class QueueItem(BaseModel):
@@ -469,6 +522,8 @@ def me(user: User = Depends(get_current_user)) -> ProfileResponse:
         first_name=user.first_name,
         last_name=user.last_name,
         track_slug=user.primary_track.slug if user.primary_track else None,
+        level=user.level,
+        streak=user.streak_count,
     )
 
 
@@ -502,6 +557,8 @@ def complete_profile(
         first_name=user.first_name,
         last_name=user.last_name,
         track_slug=track.slug,
+        level=user.level,
+        streak=user.streak_count,
     )
 
 
@@ -646,6 +703,195 @@ def _estimate_prompt_tokens(text: str) -> int:
     return max(1, round(len(text.strip()) / 4))
 
 
+# ---------------------------------------------------------------------------
+# Routes — public prompt library
+# ---------------------------------------------------------------------------
+# A "public" visibility Workflow row IS a library entry — no separate table
+# needed for this pivot, just the category/upvote_count columns and the
+# workflow_votes table added alongside this route section. Browsing and
+# using prompts is fully open (no auth); posting one requires an account.
+
+
+def _author_display_name(first_name: str | None, email: str) -> str:
+    """Never expose a raw email on a public listing — first name if set,
+    otherwise the part of the email before @, same pattern AccountMenu.jsx
+    already uses client-side for initials."""
+    if first_name:
+        return first_name
+    return email.split("@")[0]
+
+
+def _to_library_out(row: Workflow, first_name: str | None, email: str, voted_ids: set) -> LibraryPromptOut:
+    return LibraryPromptOut(
+        id=str(row.id),
+        title=row.title,
+        prompt_template=row.prompt_template,
+        category=row.category,
+        author_name=_author_display_name(first_name, email),
+        usage_count=row.usage_count,
+        upvote_count=row.upvote_count,
+        created_at=row.created_at.isoformat(),
+        has_voted=row.id in voted_ids,
+    )
+
+
+@app.get("/library/categories")
+def library_categories() -> list[str]:
+    return LIBRARY_CATEGORIES
+
+
+@app.get("/library/prompts", response_model=LibraryPromptListResponse)
+def list_library_prompts(
+    session: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+    sort: str = "newest",  # "newest" | "top"
+    category: str | None = None,
+    q: str | None = None,
+    limit: int = 50,
+) -> LibraryPromptListResponse:
+    """
+    Browse the public prompt library. No auth required — has_voted on each
+    result is only meaningful (ever True) when a valid token was sent;
+    an anonymous browser correctly sees has_voted=False on everything.
+    """
+    limit = max(1, min(limit, 100))  # guard against an absurd ?limit= value
+
+    query = (
+        select(Workflow, User.first_name, User.email)
+        .join(User, Workflow.author_id == User.id)
+        .where(Workflow.visibility == "public")
+    )
+
+    if category:
+        query = query.where(Workflow.category == category)
+    if q:
+        like = f"%{q}%"
+        query = query.where(
+            or_(Workflow.title.ilike(like), Workflow.prompt_template.ilike(like))
+        )
+
+    if sort == "top":
+        query = query.order_by(desc(Workflow.upvote_count), desc(Workflow.usage_count))
+    else:
+        query = query.order_by(desc(Workflow.created_at))
+
+    total = session.scalar(
+        select(func.count()).select_from(query.with_only_columns(Workflow.id).subquery())
+    )
+
+    rows = session.execute(query.limit(limit)).all()
+
+    voted_ids: set = set()
+    if user is not None and rows:
+        voted_ids = set(
+            session.scalars(
+                select(WorkflowVote.workflow_id).where(
+                    WorkflowVote.user_id == user.id,
+                    WorkflowVote.workflow_id.in_([r[0].id for r in rows]),
+                )
+            )
+        )
+
+    prompts = [_to_library_out(wf, first_name, email, voted_ids) for wf, first_name, email in rows]
+    return LibraryPromptListResponse(prompts=prompts, total=total or 0)
+
+
+@app.post("/library/prompts", response_model=LibraryPromptOut)
+def post_library_prompt(
+    body: LibraryPromptCreate,
+    session: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> LibraryPromptOut:
+    """Publish a prompt to the public library. Requires an account —
+    get_current_user (not the _optional variant) 401s without one."""
+    if body.category not in LIBRARY_CATEGORIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"category must be one of {LIBRARY_CATEGORIES}",
+        )
+
+    row = Workflow(
+        author_id=user.id,
+        org_id=None,
+        title=body.title.strip(),
+        prompt_template=body.prompt_template,
+        variables=[],
+        category=body.category,
+        visibility="public",
+        usage_count=0,
+        upvote_count=0,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    return _to_library_out(row, user.first_name, user.email, voted_ids=set())
+
+
+@app.post("/library/prompts/{prompt_id}/upvote")
+def upvote_library_prompt(
+    prompt_id: str,
+    session: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, int]:
+    """
+    Idempotent: a second upvote from the same person is a silent no-op, not
+    an error and not a double-count — enforced by workflow_votes' unique
+    constraint via ON CONFLICT DO NOTHING, not by an app-side check-then-
+    insert (which would race under concurrent requests).
+    """
+    row = session.get(Workflow, prompt_id)
+    if row is None or row.visibility != "public":
+        raise HTTPException(status_code=404, detail="Prompt not found.")
+
+    # NOTE: result.rowcount on an INSERT ... ON CONFLICT DO NOTHING statement
+    # is documented as unreliable across SQLAlchemy/DBAPI combinations — it
+    # doesn't consistently reflect whether a row was actually inserted vs.
+    # skipped by the conflict. .returning() + checking for an actual row is
+    # the reliable way to tell the two cases apart.
+    stmt = (
+        pg_insert(WorkflowVote)
+        .values(workflow_id=row.id, user_id=user.id)
+        .on_conflict_do_nothing(index_elements=["workflow_id", "user_id"])
+        .returning(WorkflowVote.id)
+    )
+    inserted = session.execute(stmt).first()
+
+    if inserted is not None:  # a new vote, not a repeat
+        session.execute(
+            update(Workflow)
+            .where(Workflow.id == row.id)
+            .values(upvote_count=Workflow.upvote_count + 1)
+        )
+
+    session.commit()
+    session.refresh(row)
+    return {"upvote_count": row.upvote_count}
+
+
+@app.post("/library/prompts/{prompt_id}/use")
+def mark_library_prompt_used(
+    prompt_id: str,
+    session: Session = Depends(get_db),
+) -> dict[str, int]:
+    """
+    Bumps usage_count. No auth required — using a prompt (e.g. clicking
+    "Copy") doesn't require an account, same as browsing. Not idempotent by
+    design: someone genuinely using the same prompt twice is two real uses,
+    unlike a vote, which represents a one-time opinion.
+    """
+    row = session.get(Workflow, prompt_id)
+    if row is None or row.visibility != "public":
+        raise HTTPException(status_code=404, detail="Prompt not found.")
+
+    session.execute(
+        update(Workflow).where(Workflow.id == row.id).values(usage_count=Workflow.usage_count + 1)
+    )
+    session.commit()
+    session.refresh(row)
+    return {"usage_count": row.usage_count}
+
+
 @app.post("/grade/freeform", response_model=FreeformGradeResponse)
 @limiter.limit(FREEFORM_RATE_LIMIT)
 def grade_freeform(
@@ -679,8 +925,9 @@ def grade_freeform(
         raise HTTPException(status_code=500, detail="Server is misconfigured.")
 
     tokens = result["tokens"]
+    cost = 0.0
     if tokens["input"] or tokens["output"]:
-        record_usage(
+        cost = record_usage(
             model=HAIKU_MODEL,
             input_tokens=tokens["input"],
             output_tokens=tokens["output"],
@@ -692,6 +939,8 @@ def grade_freeform(
         feedback=result["feedback"],
         total=result["total"],
         tokens=_estimate_prompt_tokens(body.prompt),
+        improved_prompt=result["improved_prompt"],
+        cost_usd=cost,
     )
 
 
@@ -763,6 +1012,7 @@ def create_attempt(
         total=result["total"],
         tokens=_estimate_prompt_tokens(body.prompt),
         attempt_id=attempt_id,
+        cost_usd=float(cost),
     )
 
 

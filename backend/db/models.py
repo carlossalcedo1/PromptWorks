@@ -345,11 +345,45 @@ class Workflow(Base):
     usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # "private" | "org" | "public". The default for a brand-new save is still
     # an open product decision; "private" is the safe one to land on.
+    # "public" is what the consumer prompt library (see /library routes)
+    # reads — a workflow saved from Team Practice and one posted to the
+    # public library are the same underlying row shape, just different
+    # visibility, which is why this table didn't need a rename or a
+    # parallel table for the library pivot.
     visibility: Mapped[str] = mapped_column(
         String(32), nullable=False, default="private"
     )
+    # Library-specific fields — meaningless for a private/org workflow, but
+    # not worth a separate table for two columns. One of a small fixed set
+    # (see backend/main.py's LIBRARY_CATEGORIES) rather than free-tag text,
+    # so category filtering stays a simple equality check.
+    category: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    upvote_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
+
+
+class WorkflowVote(Base):
+    """
+    One row per (workflow, user) upvote — the unique constraint is what
+    makes upvoting idempotent instead of spammable. Deleting the row is how
+    an un-vote would work if that's ever added; for now the API only adds.
+    """
+
+    __tablename__ = "workflow_votes"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workflow_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        UniqueConstraint("workflow_id", "user_id", name="uq_workflow_votes_pair"),
+    )
 
 
 # ---------------------------------------------------------------------------
