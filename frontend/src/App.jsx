@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { MarketingLayout, AppLayout } from "./components/layout/Layouts.jsx";
 import { Button, Section } from "./components/ui/index.jsx";
 import { AuthProvider, RequireAuth } from "./lib/auth.jsx";
@@ -7,7 +7,6 @@ import Home from "./pages/Home.jsx";
 import Platform from "./pages/Platform.jsx";
 import Why from "./pages/Why.jsx";
 import Tracks from "./pages/Tracks.jsx";
-import ForTeams from "./pages/ForTeams.jsx";
 import Pricing from "./pages/Pricing.jsx";
 import Resources from "./pages/Resources.jsx";
 import About from "./pages/About.jsx";
@@ -23,6 +22,7 @@ import Practice from "./pages/app/Practice.jsx";
 import FreeformCheck from "./pages/app/FreeformCheck.jsx";
 import Player from "./pages/app/Player.jsx";
 import Workflows from "./pages/app/Workflows.jsx";
+import Profile from "./pages/app/Profile.jsx";
 import Team from "./pages/app/Team.jsx";
 
 function NotFound() {
@@ -49,8 +49,16 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/platform" element={<Platform />} />
             <Route path="/why" element={<Why />} />
+            {/* Named "Scenarios" in the nav; /tracks stays live because it
+                is the URL every existing link and bookmark points at. */}
+            <Route path="/scenarios" element={<Tracks />} />
             <Route path="/tracks" element={<Tracks />} />
-            <Route path="/for-teams" element={<ForTeams />} />
+            {/* The business case lives on the homepage now. The old URL
+                is kept because it is linked from outside the app. */}
+            <Route
+              path="/for-teams"
+              element={<Navigate to="/#business" replace />}
+            />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/resources" element={<Resources />} />
             <Route path="/about" element={<About />} />
@@ -74,6 +82,14 @@ export default function App() {
             <Route path="/practice" element={<Practice />} />
             <Route path="/practice/:slug" element={<Player />} />
             <Route path="/check" element={<FreeformCheck />} />
+            <Route
+              path="/profile"
+              element={
+                <RequireAuth>
+                  <Profile />
+                </RequireAuth>
+              }
+            />
             <Route
               path="/workflows"
               element={

@@ -8,10 +8,10 @@ import { AccountMenu } from "./AccountMenu.jsx";
 
 const NAV = [
   { to: "/platform", label: "Platform" },
-  { to: "/tracks", label: "Tracks" },
-  { to: "/for-teams", label: "For Teams" },
+  { to: "/scenarios", label: "Prompt Library" },
+  { to: "/#business", label: "For Business" },
   { to: "/pricing", label: "Pricing" },
-  { to: "/resources", label: "Resources" },
+  { to: "/about", label: "About Us" },
 ];
 
 // No search in the marketing header — search lives in the app, scoped to the
@@ -34,12 +34,6 @@ export function MarketingHeader() {
           <nav className="flex items-center gap-6">
             <Link to="/why" className="hover:text-ink">
               Why prompt training?
-            </Link>
-            <Link to="/for-teams" className="hover:text-ink">
-              For business
-            </Link>
-            <Link to="/resources" className="hover:text-ink">
-              Docs
             </Link>
           </nav>
           <div className="flex items-center gap-5">
@@ -129,6 +123,13 @@ export function MarketingHeader() {
                 <p className="truncate px-2 py-1.5 text-[13px] text-ink-50">
                   {session.email}
                 </p>
+                <Link
+                  to="/profile"
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg px-2 py-2.5 text-[15px] text-ink-70 hover:bg-paper-2"
+                >
+                  Profile
+                </Link>
                 <Link
                   to="/dashboard"
                   onClick={() => setOpen(false)}

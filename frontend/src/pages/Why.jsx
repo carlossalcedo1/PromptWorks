@@ -295,7 +295,7 @@ export default function Why() {
               <Button to="/contact" variant="filled" size="lg">
                 Book a demo
               </Button>
-              <Button to="/for-teams" variant="bordered" size="lg">
+              <Button to="/#business" variant="bordered" size="lg">
                 See the team dashboard
               </Button>
             </div>

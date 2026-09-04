@@ -14,7 +14,7 @@ function initialsFor(session) {
 }
 
 /**
- * Avatar + dropdown (email, Dashboard, Log out) for a signed-in user.
+ * Avatar + dropdown (email, Profile, Dashboard, Log out) for a signed-in user.
  *
  * Shared between AppHeader and MarketingHeader: a session should look the
  * same — an avatar with a menu — no matter which header you're under when
@@ -45,6 +45,13 @@ export function AccountMenu({ session }) {
           <p className="truncate px-2.5 py-1.5 text-[13px] text-ink-50">
             {session.email}
           </p>
+          <Link
+            to="/profile"
+            onClick={() => setOpen(false)}
+            className="block rounded-lg px-2.5 py-2 text-sm text-ink-70 hover:bg-paper-2 hover:text-ink"
+          >
+            Profile
+          </Link>
           <Link
             to="/dashboard"
             onClick={() => setOpen(false)}

@@ -8,10 +8,10 @@ import { useClickOutside } from "../../lib/useClickOutside.js";
 // without hitting the browser back button.
 const NAV = [
   { to: "/platform", label: "Platform" },
-  { to: "/tracks", label: "Tracks" },
-  { to: "/for-teams", label: "For Teams" },
+  { to: "/scenarios", label: "Prompt Library" },
+  { to: "/#business", label: "For Business" },
   { to: "/pricing", label: "Pricing" },
-  { to: "/resources", label: "Resources" },
+  { to: "/about", label: "About Us" },
 ];
 
 /** Top-right hamburger + dropdown for the chrome-less auth pages. */

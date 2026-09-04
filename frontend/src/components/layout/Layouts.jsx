@@ -4,12 +4,34 @@ import { MarketingHeader } from "./MarketingHeader.jsx";
 import { AppHeader } from "./AppHeader.jsx";
 import { Footer } from "./Footer.jsx";
 
+/** Top of the page on navigation — except when the URL names a section,
+ *  in which case scroll to that section instead. */
 function ScrollToTop() {
-  const { pathname, hash } = useLocation();
+  // `key` changes on every navigation, including one to the URL you are
+  // already on — so clicking "For Business" a second time still jumps.
+  const { pathname, hash, key } = useLocation();
   useEffect(() => {
-    if (hash) return;
-    window.scrollTo(0, 0);
-  }, [pathname, hash]);
+    if (!hash) {
+      window.scrollTo(0, 0);
+      return;
+    }
+    // scrollIntoView honours the scroll-margin-top set in index.css, which is
+    // what keeps the section clear of the sticky header.
+    const jump = () => {
+      const el = document.getElementById(hash.slice(1));
+      if (el) el.scrollIntoView();
+      return !!el;
+    };
+    // The effect runs after commit, so on a same-page link the target is
+    // already there. A cross-page link can land a tick early — hence the
+    // retry. A timeout rather than requestAnimationFrame, which browsers
+    // suspend entirely while the tab is not being painted.
+    if (jump()) return;
+    const timer = setTimeout(() => {
+      if (!jump()) window.scrollTo(0, 0);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [pathname, hash, key]);
   return null;
 }
 

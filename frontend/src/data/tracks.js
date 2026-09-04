@@ -58,6 +58,15 @@ export const TRACKS = [
     blurb: "Spec to code, review prompts, test generation.",
   },
   {
+    slug: "personal-use",
+    title: "Personal use",
+    group: "role",
+    count: 11,
+    level: "Beginner",
+    blurb:
+      "Everyday asks: trip plans, letters, study notes, getting a straight answer.",
+  },
+  {
     slug: "rag-grounding",
     title: "RAG & grounding",
     group: "advanced",

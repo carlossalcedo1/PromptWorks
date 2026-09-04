@@ -20,6 +20,14 @@ const field =
 
 const RESEND_COOLDOWN_MS = 20_000;
 
+// Bring your own key. The field is drawn but not wired: there is no endpoint
+// to store a key against yet, and an input that silently discards a pasted
+// API key is worse than one that says it is not ready. Flip this to true in
+// the same change that adds POST /auth/model-key, and send `provider` and
+// `apiKey` from submitProfile below.
+const BYOK_ENABLED = false;
+const PROVIDERS = ["OpenAI", "Anthropic", "Gemini", "Groq", "Mistral"];
+
 /**
  * The whole passwordless flow: email -> 6-digit code -> (new account only)
  * name + track -> session.
@@ -44,6 +52,8 @@ export function EmailCodeForm() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [track, setTrack] = useState(null);
+  const [provider, setProvider] = useState(PROVIDERS[0]);
+  const [apiKey, setApiKey] = useState("");
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -118,7 +128,7 @@ export function EmailCodeForm() {
   const canResend = Date.now() >= resendAt;
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-16">
+    <div className="w-full">
       <h1 className="h-section text-balance">
         {step === "email"
           ? "Log in or sign up"
@@ -128,7 +138,7 @@ export function EmailCodeForm() {
       </h1>
       <p className="mt-3 text-[15px] leading-relaxed text-ink-70">
         {step === "email"
-          ? "Your learning partner for what's to come"
+          ? "Your favorite prompt analyzer with community support"
           : step === "code"
             ? `We sent a 6-digit code to ${email}`
             : "Sets your default track. You can change it later."}
@@ -142,7 +152,7 @@ export function EmailCodeForm() {
               type="email"
               autoFocus
               autoComplete="email"
-              placeholder="Enter your email"
+              placeholder="Enter your Email"
               className={field}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -255,9 +265,9 @@ export function EmailCodeForm() {
           </div>
 
           <div>
-            <p className="mb-1.5 text-sm font-medium">What do you do?</p>
+            <p className="mb-1.5 text-sm font-medium">What do you work on?</p>
             <div className="grid gap-2 sm:grid-cols-2">
-              {ROLE_TRACKS.map((t) => (
+              {ROLE_TRACKS.map((t, i) => (
                 <button
                   key={t.slug}
                   type="button"
@@ -267,12 +277,69 @@ export function EmailCodeForm() {
                     track === t.slug
                       ? "border-ink bg-ink text-paper"
                       : "border-rule-strong bg-white hover:border-ink",
+                    // An odd count would leave the last one alone in its row.
+                    i === ROLE_TRACKS.length - 1 &&
+                      ROLE_TRACKS.length % 2 === 1 &&
+                      "sm:col-span-2",
                   )}
                 >
                   {t.title}
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Optional, and set apart so it reads that way — nobody should
+              feel they have to find an API key to finish signing up. */}
+          <div className="rounded-2xl border border-dashed border-rule-strong bg-paper-2/60 p-4">
+            <label htmlFor="apiKey" className="block text-sm font-medium">
+              Model key
+              <span className="ml-1.5 text-[13px] font-normal text-ink-30">
+                optional
+              </span>
+            </label>
+
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {PROVIDERS.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setProvider(name)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-[13px] transition-colors",
+                    provider === name
+                      ? "border-signal bg-signal-wash font-medium text-signal-ink"
+                      : "border-rule-strong bg-white text-ink-70 hover:border-ink",
+                  )}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+
+            <input
+              id="apiKey"
+              type="password"
+              autoComplete="off"
+              spellCheck="false"
+              disabled={!BYOK_ENABLED}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={
+                BYOK_ENABLED ? "sk-…" : "Key storage ships with the backend"
+              }
+              className={cn(
+                field,
+                "mt-2.5 font-mono text-sm",
+                !BYOK_ENABLED && "cursor-not-allowed bg-paper-2 text-ink-30",
+              )}
+            />
+
+            <p className="mt-2.5 text-[13px] leading-relaxed text-ink-50">
+              Skip this. Your first 5,000 tokens a month run on our keys — add
+              your own from Profile when you outgrow them. Keys are encrypted
+              at rest and decrypted in memory for a single request.
+            </p>
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}

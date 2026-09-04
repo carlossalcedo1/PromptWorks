@@ -64,7 +64,7 @@ function PlayerScreen({ slug }) {
           Practice
         </Link>
         <span className="text-ink-30">›</span>
-        <Link to="/tracks" className="hover:text-ink">
+        <Link to="/scenarios" className="hover:text-ink">
           {track?.title ?? scenario.track}
         </Link>
         <span className="text-ink-30">›</span>

@@ -1,55 +1,49 @@
 import { Button, Chip, Section, SectionHead, cn } from "../components/ui/index.jsx";
 
-// No dollar figures in the mockup — price after five customer conversations.
+// Three tiers. Teams folded into Enterprise — a single seat-based plan was
+// splitting the same reporting story across two columns.
 const TIERS = [
   {
     name: "Free",
     price: "$0",
     note: "For one person, permanently.",
+    highlight: "5,000 tokens free every month",
     features: [
+      "5,000 graded tokens / month, on us",
+      "Then bring your own key — you pay the provider directly",
       "Foundations track",
-      "10 graded reps / month",
       "Community prompt library",
-      "BYOK optional",
     ],
     cta: { label: "Start free", to: "/onboarding", variant: "bordered" },
   },
   {
     name: "Pro",
-    price: "$ / month",
+    price: "$5 / month",
     note: "For the individual who is serious about it.",
+    featured: true,
+    highlight: "Up to 250,000 tokens / month",
     features: [
+      "250,000 graded tokens / month — no key required",
       "All tracks, including advanced",
-      "Unlimited graded reps",
       "Model comparison",
       "Certification",
+      "BYOK still available past the cap",
     ],
-    cta: { label: "Upgrade", to: "/onboarding", variant: "bordered" },
-  },
-  {
-    name: "Teams",
-    price: "$ / seat / month",
-    note: "Where the reporting starts.",
-    featured: true,
-    features: [
-      "Everything in Pro",
-      "Admin dashboard + heat map",
-      "Assignments & nudges",
-      "Team workflow library",
-      "SSO / SAML",
-    ],
-    cta: { label: "Book a demo", to: "/contact", variant: "filled" },
+    cta: { label: "Upgrade", to: "/onboarding", variant: "filled" },
   },
   {
     name: "Enterprise",
     price: "Talk to us",
-    note: "Implementation, not just a licence.",
+    note: "Implementation and reporting, not just a licence.",
     features: [
+      "Everything in Pro, for every seat",
+      "Admin dashboard + heat map",
+      "Assignments & nudges",
+      "Team workflow library",
+      "SSO / SAML",
       "Custom scenarios from your SOPs",
       "Grader fine-tuned on your rubric",
-      "End-to-end implementation",
-      "Dedicated success manager",
-      "SLA + security review",
+      "Dedicated success manager, SLA + security review",
     ],
     cta: { label: "Book a demo", to: "/contact", variant: "bordered" },
   },
@@ -57,12 +51,12 @@ const TIERS = [
 
 const FAQ = [
   [
-    "Why are there no prices on this page?",
-    "Because we have not had five customer conversations yet, and a number invented before those is a number we would have to walk back. Team pricing is per seat and lands after them.",
+    "What does 5,000 tokens actually get me?",
+    "Roughly fifteen to twenty graded reps a month, depending on how long your prompts and the scenario briefs are. It resets on the first of the month and it is not a trial — it stays free.",
   ],
   [
     "What is BYOK?",
-    "Bring your own key. You supply a model API key and pay the provider directly for inference on the free tier. It is optional — ten graded reps a month run on ours.",
+    "Bring your own key. You supply a model API key and pay the provider directly for inference, so nothing caps you once the free 5,000 tokens run out. Pro raises the included allowance to 250,000 tokens instead.",
   ],
   [
     "Is the certification a real assessment?",
@@ -70,7 +64,7 @@ const FAQ = [
   ],
   [
     "What happens to our prompts?",
-    "They are never used to train models. Retention is configurable on Teams and above, and deletion is real deletion.",
+    "They are never used to train models. Retention is configurable on Enterprise, and deletion is real deletion.",
   ],
 ];
 
@@ -81,17 +75,18 @@ export default function Pricing() {
         <div className="mx-auto max-w-3xl text-center">
           <Chip tone="quiet">Pricing</Chip>
           <h1 className="mt-6 h-display text-balance">
-            Free for one person. Priced for a team.
+            5,000 tokens free, every month.
           </h1>
           <p className="mx-auto mt-7 max-w-xl text-lg leading-relaxed text-ink-70">
-            The free tier is not a trial. It stays free, because individuals are
-            how teams find us.
+            Not a trial — it resets and it stays free. Past that, bring your own
+            key and pay the provider directly, or take Pro for 250,000 tokens a
+            month at $5.
           </p>
         </div>
       </Section>
 
       <Section className="pt-4">
-        <div className="grid gap-px overflow-hidden rounded-2xl border border-rule bg-rule lg:grid-cols-4">
+        <div className="grid gap-px overflow-hidden rounded-2xl border border-rule bg-rule lg:grid-cols-3">
           {TIERS.map((t) => (
             <div
               key={t.name}
@@ -102,7 +97,7 @@ export default function Pricing() {
             >
               {t.featured && (
                 <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-signal">
-                  Most teams start here
+                  Most people start here
                 </p>
               )}
               <h2 className="text-xl font-semibold tracking-[-0.02em]">{t.name}</h2>
@@ -110,6 +105,11 @@ export default function Pricing() {
                 {t.price}
               </p>
               <p className="mt-1.5 text-[13px] text-ink-50">{t.note}</p>
+              {t.highlight && (
+                <p className="mt-4 rounded-xl bg-signal-wash px-3 py-2 text-[13px] font-medium text-signal-ink">
+                  {t.highlight}
+                </p>
+              )}
 
               <ul className="mt-6 flex-1 space-y-2.5">
                 {t.features.map((f) => (
@@ -133,9 +133,9 @@ export default function Pricing() {
         </div>
 
         <p className="mt-6 text-[13px] text-ink-30">
-          Figures are deliberately absent in this prototype. Open question:
-          BYOK vs. paid inference on the free tier — BYOK removes the biggest
-          cost risk but adds signup friction.
+          Token allowances cover grading and model calls made through
+          Promptworks. Bring your own key at any tier and you pay the provider
+          directly instead.
         </p>
       </Section>
 
