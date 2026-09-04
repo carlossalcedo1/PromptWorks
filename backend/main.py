@@ -21,7 +21,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import datetime, timedelta, timezone
+import statistics
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from dotenv import load_dotenv
@@ -52,10 +53,10 @@ from backend.auth.codes import (
 from backend.auth.dependencies import get_current_user, get_current_user_optional
 from backend.auth.jwt import issue_token
 from backend.db.base import get_db
-from backend.db.models import Attempt, LoginCode, Track, User
+from backend.db.models import Attempt, LoginCode, Track, User, Workflow
 from backend.db.models import Scenario as ScenarioRow
 from backend.llm_grader import MODEL, DIMENSIONS, GraderError, Scenario, grade_prompt
-from backend.llm_grader import CalibrationExample
+from backend.llm_grader import CalibrationExample, grade_freeform_prompt, HAIKU_MODEL
 from backend.spend_tracker import BudgetExceededError, check_budget, record_usage
 
 logging.basicConfig(level=logging.INFO)
@@ -109,6 +110,10 @@ def get_scenario_row(session: Session, slug: str) -> ScenarioRow:
 limiter = Limiter(key_func=get_remote_address)
 
 ATTEMPTS_RATE_LIMIT = os.environ.get("ATTEMPTS_RATE_LIMIT", "10/minute")
+# Freeform grading has no signup gate at all (fully anonymous, unlike
+# /attempts which at least ties to a scenario), so it gets its own,
+# independently-tunable limit rather than sharing ATTEMPTS_RATE_LIMIT.
+FREEFORM_RATE_LIMIT = os.environ.get("FREEFORM_RATE_LIMIT", "5/minute")
 LOGIN_CODE_RATE_LIMIT = os.environ.get("LOGIN_CODE_RATE_LIMIT", "3/minute")
 
 _PERIOD_SECONDS = {
@@ -141,7 +146,7 @@ def parse_rate_limit(spec: str) -> tuple[int, int]:
 
 app = FastAPI(title="Promptworks API", version="0.2.0")
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler) # type: ignore[arg-type]
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 
 def _allowed_origins() -> list[str]:
@@ -190,6 +195,19 @@ class DimensionFeedback(BaseModel):
     format: str
     audience: str
     examples: str
+
+
+class FreeformGradeRequest(BaseModel):
+    prompt: str = Field(max_length=8000)
+
+
+class FreeformGradeResponse(BaseModel):
+    scores: DimensionScores
+    feedback: DimensionFeedback
+    total: int
+    # Same prompt-length-estimate contract as AttemptResponse.tokens — see
+    # that model's comment for why this isn't API usage.
+    tokens: int
 
 
 class AttemptResponse(BaseModel):
@@ -242,6 +260,42 @@ class ProfileResponse(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     track_slug: str | None = None
+
+
+class QueueItem(BaseModel):
+    scenario: str  # slug — matches the frontend's /practice/{slug} route
+    title: str
+    track: str
+    difficulty: str
+    status: str  # "not started" | "N attempts" | "completed X/30"
+
+
+class DimensionScoresFloat(BaseModel):
+    # Same six dimensions as DimensionScores, but floats — RubricProfile
+    # renders these with .toFixed(1), matching org.js's mock LEARNER.profile
+    # shape exactly (e.g. 4.6, not 5).
+    clarity: float
+    context: float
+    constraints: float
+    format: float
+    audience: float
+    examples: float
+
+
+class DashboardResponse(BaseModel):
+    name: str
+    track: str | None = None
+    trackSlug: str | None = None
+    level: int
+    streak: int
+    repsThisWeek: int
+    repsGoal: int
+    medianScore: float
+    medianDelta: float
+    workflowsShipped: int
+    workflowUses: int
+    profile: DimensionScoresFloat
+    queue: list[QueueItem]
 
 
 # ---------------------------------------------------------------------------
@@ -452,6 +506,129 @@ def complete_profile(
 
 
 # ---------------------------------------------------------------------------
+# Routes — learner dashboard
+# ---------------------------------------------------------------------------
+
+# Not yet a per-user setting — a flat weekly target for everyone, matching
+# the mock LEARNER.repsGoal in the frontend's data/org.js.
+REPS_GOAL = 10
+
+# A scenario counts as "mastered" (no longer worth queuing) once a single
+# attempt has hit this total. Matches the 24+/30 threshold the mock queue
+# statuses implied ("completed 26/30").
+MASTERY_THRESHOLD = 24
+
+
+@app.get("/dashboard", response_model=DashboardResponse)
+def get_dashboard(
+    session: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> DashboardResponse:
+    """
+    Real learner stats computed from the attempts table — the replacement
+    for the hardcoded LEARNER mock in frontend/src/data/org.js. A brand new
+    user with zero attempts gets honest zeros/empties back, not an error.
+    """
+    now = datetime.now(timezone.utc)
+    week_start = (now - timedelta(days=now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    last_month_end = this_month_start - timedelta(seconds=1)
+    last_month_start = last_month_end.replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+
+    all_attempts = list(
+        session.scalars(
+            select(Attempt)
+            .where(Attempt.user_id == user.id)
+            .order_by(Attempt.created_at.desc())
+        )
+    )
+
+    reps_this_week = sum(1 for a in all_attempts if a.created_at >= week_start)
+
+    this_month_totals = [a.total for a in all_attempts if a.created_at >= this_month_start]
+    last_month_totals = [
+        a.total for a in all_attempts if last_month_start <= a.created_at < this_month_start
+    ]
+
+    if this_month_totals:
+        median_score = float(statistics.median(this_month_totals))
+    elif all_attempts:
+        median_score = float(statistics.median(a.total for a in all_attempts))
+    else:
+        median_score = 0.0
+
+    median_delta = (
+        median_score - float(statistics.median(last_month_totals))
+        if last_month_totals
+        else 0.0
+    )
+
+    # Rolling profile: last 20 attempts, per-dimension average — matches the
+    # mock's "Rolling average across your last 20 attempts" label exactly.
+    recent = all_attempts[:20]
+    if recent:
+        profile = {
+            dim: round(statistics.mean(getattr(a, f"{dim}_score") for a in recent), 1)
+            for dim in DIMENSIONS
+        }
+    else:
+        profile = {dim: 0.0 for dim in DIMENSIONS}
+
+    workflows = list(session.scalars(select(Workflow).where(Workflow.author_id == user.id)))
+    workflows_shipped = len(workflows)
+    workflow_uses = sum(w.usage_count for w in workflows)
+
+    # Queue: up to 3 not-yet-mastered scenarios in the user's primary track.
+    queue: list[QueueItem] = []
+    if user.primary_track_id is not None:
+        track_scenarios = session.scalars(
+            select(ScenarioRow).where(ScenarioRow.track_id == user.primary_track_id)
+        )
+        for s in track_scenarios:
+            if len(queue) >= 3:
+                break
+            attempts_for_s = [a for a in all_attempts if a.scenario_id == s.id]
+            if not attempts_for_s:
+                status_str = "not started"
+            else:
+                best = max(a.total for a in attempts_for_s)
+                if best >= MASTERY_THRESHOLD:
+                    continue  # mastered — nothing left to queue here
+                n = len(attempts_for_s)
+                status_str = f"{n} attempt{'s' if n != 1 else ''}"
+
+            queue.append(
+                QueueItem(
+                    scenario=s.slug,
+                    title=s.title,
+                    track=user.primary_track.title if user.primary_track else "",
+                    difficulty=s.difficulty,
+                    status=status_str,
+                )
+            )
+
+    return DashboardResponse(
+        name=user.first_name or user.email.split("@")[0],
+        track=user.primary_track.title if user.primary_track else None,
+        trackSlug=user.primary_track.slug if user.primary_track else None,
+        level=user.level,
+        streak=user.streak_count,
+        repsThisWeek=reps_this_week,
+        repsGoal=REPS_GOAL,
+        medianScore=median_score,
+        medianDelta=median_delta,
+        workflowsShipped=workflows_shipped,
+        workflowUses=workflow_uses,
+        profile=DimensionScoresFloat(**profile),
+        queue=queue,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Routes — grading
 # ---------------------------------------------------------------------------
 
@@ -467,6 +644,55 @@ def _estimate_prompt_tokens(text: str) -> int:
     if not text:
         return 0
     return max(1, round(len(text.strip()) / 4))
+
+
+@app.post("/grade/freeform", response_model=FreeformGradeResponse)
+@limiter.limit(FREEFORM_RATE_LIMIT)
+def grade_freeform(
+    request: Request,
+    body: FreeformGradeRequest,
+) -> FreeformGradeResponse:
+    """
+    Grade any prompt on general prompt-engineering craft — no scenario_id,
+    no signup required. This is deliberately NOT written to the attempts
+    table and never feeds a tracked skill score or the team dashboard: the
+    judge has no known-correct scenario to check the prompt against here,
+    so these scores aren't comparable to scenario-based ones. See the
+    product discussion in llm_grader.grade_freeform_prompt()'s docstring.
+    """
+    try:
+        check_budget()
+    except BudgetExceededError as exc:
+        logger.warning("Freeform grading refused, budget exceeded: %s", exc)
+        raise HTTPException(status_code=429, detail=str(exc))
+
+    try:
+        result = grade_freeform_prompt(body.prompt)
+    except GraderError as exc:
+        logger.error("Freeform grading failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Grading failed. Please try again in a moment.",
+        )
+    except RuntimeError as exc:
+        logger.error("Grader misconfigured: %s", exc)
+        raise HTTPException(status_code=500, detail="Server is misconfigured.")
+
+    tokens = result["tokens"]
+    if tokens["input"] or tokens["output"]:
+        record_usage(
+            model=HAIKU_MODEL,
+            input_tokens=tokens["input"],
+            output_tokens=tokens["output"],
+            scenario_id=None,  # no scenario — this is what marks a freeform grade in the spend log
+        )
+
+    return FreeformGradeResponse(
+        scores=result["scores"],
+        feedback=result["feedback"],
+        total=result["total"],
+        tokens=_estimate_prompt_tokens(body.prompt),
+    )
 
 
 @app.post("/attempts", response_model=AttemptResponse)
@@ -599,4 +825,3 @@ def _record_attempt(
             exc,
         )
         return None
- 

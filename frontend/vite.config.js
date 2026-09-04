@@ -15,7 +15,16 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
+        // Caddy's `handle_path /api/*` strips the /api prefix before
+        // forwarding to the api container in production (see Caddyfile),
+        // so POST /api/attempts arrives at the app as POST /attempts and
+        // FastAPI's routes carry no prefix of their own. Vite's proxy does
+        // NOT strip prefixes by default, so without this rewrite, local
+        // dev sends the full /api/attempts path straight through and every
+        // request 404s against routes that don't expect it.
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },
 })
+ 

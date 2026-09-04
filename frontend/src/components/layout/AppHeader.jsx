@@ -11,6 +11,7 @@ import { AccountMenu } from "./AccountMenu.jsx";
 // signed-in person's own page, same reasoning as the avatar next to it.
 const NAV = [
   { to: "/practice", label: "Practice" },
+  { to: "/check", label: "Check a prompt" },
   { to: "/workflows", label: "Workflows" },
   { to: "/team", label: "Team" },
 ];

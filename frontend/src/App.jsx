@@ -20,6 +20,7 @@ import Signup from "./pages/auth/Signup.jsx";
 import Onboarding from "./pages/app/Onboarding.jsx";
 import Dashboard from "./pages/app/Dashboard.jsx";
 import Practice from "./pages/app/Practice.jsx";
+import FreeformCheck from "./pages/app/FreeformCheck.jsx";
 import Player from "./pages/app/Player.jsx";
 import Workflows from "./pages/app/Workflows.jsx";
 import Team from "./pages/app/Team.jsx";
@@ -72,6 +73,7 @@ export default function App() {
             />
             <Route path="/practice" element={<Practice />} />
             <Route path="/practice/:slug" element={<Player />} />
+            <Route path="/check" element={<FreeformCheck />} />
             <Route
               path="/workflows"
               element={

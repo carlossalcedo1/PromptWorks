@@ -92,4 +92,20 @@ export function getMe(token) {
   return get("/auth/me", token);
 }
 
+/** Real learner dashboard stats — reps, median score, rubric profile, and
+ *  the queued-scenarios list — computed server-side from the attempts
+ *  table. Replaces the hardcoded LEARNER mock in data/org.js. */
+export function getDashboard(token) {
+  return get("/dashboard", token);
+}
+
+/** Freeform grading — no scenario_id, no signup required (no token passed
+ *  here on purpose). Scores general prompt-engineering craft on the same
+ *  six dimensions used everywhere else, but this is NOT written to the
+ *  attempts table and does not count toward a tracked skill score — see
+ *  backend/main.py's /grade/freeform route for why. */
+export function gradeFreeform(prompt) {
+  return post("/grade/freeform", { prompt });
+}
+
 export { ApiError };

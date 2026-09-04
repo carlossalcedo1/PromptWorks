@@ -1,149 +1,224 @@
-PROMPTWORKS — STAGE 2 BACKEND CHANGELOG
+PROMPTWORKS — BACKEND CHANGELOG
 =========================================
-(LLM grading, API endpoint, cost tracking, model routing, rubric weighting)
+(LLM grading, API endpoint, cost tracking, model routing, rubric weighting,
+ database layer, auth, deployment)
 
 
-1. LLM-AS-JUDGE GRADER (llm_grader.py)
+1. LLM-AS-JUDGE GRADER (backend/llm_grader.py)
 ----------------------------------------
-- Built grade_prompt(scenario, submitted_prompt) as the direct replacement
-  for the Stage 1 deterministic lib/grader.js. Same output shape:
-      { scores: {6 dims}, feedback: {6 dims}, total, tokens: {input, output} }
-  No frontend changes needed to consume this.
-
-- Prompt-injection guardrail: the learner's submitted prompt is wrapped in
-  <submitted_prompt> tags with an explicit system-prompt rule that anything
-  inside is DATA to grade, never instructions to follow. Verified with a
-  live test suite (see below) — manipulation attempts score no higher than
-  a genuinely weak prompt.
-
-- Empty/whitespace-only prompts short-circuit to 0/30 with zero API calls
-  — matches the Stage 1 "empty -> 0/30" behavior without spending money.
-
-- Retries once on malformed/invalid JSON, then raises GraderError rather
-  than ever fabricating a score. Total is always recomputed from the
-  per-dimension scores server-side, never trusted from the model's output.
-
-- Fixed a runtime bug: `temperature` is deprecated on current-gen Claude
-  models (Sonnet 5 included) and the API rejects it with a 400 — removed
-  it from the request entirely rather than trying to pass it via extra_body.
-
-- Added model routing support: grade_prompt() now accepts a `model`
-  parameter (defaults to MODEL / Sonnet 5). New HAIKU_MODEL and
-  SONNET_MODEL constants, both overridable via env vars.
-
-- Added rubric_weights to the Scenario dataclass, matching the
-  `rubric_weights` field already specified in the brief's `scenarios`
-  Mongo collection. Defaults to equal weight (1.0) on all six dimensions
-  — mathematically identical to a plain sum, so fully backward compatible.
-  Weighted totals always normalize back to a 30-point max regardless of
-  how skewed the weights are, keeping "x/30" comparable across every
-  scenario on the score screen, learner dashboard, and team heat map.
-
-- Added calibration_examples to Scenario: known-correctly-scored past
-  submissions, fed into the judge's prompt (clearly labeled as calibration
-  data, not something to re-grade) to anchor its sense of scale against
-  your own validated Stage 1 scoring, rather than each model inventing its
-  own interpretation of what a "3/5" looks like.
+- grade_prompt(scenario, submitted_prompt) — the direct replacement for the
+  Stage 1 deterministic lib/grader.js.
+- Prompt-injection guardrail: submitted prompt wrapped in <submitted_prompt>
+  tags, system prompt explicitly says treat as DATA, never instructions.
+  Verified live — manipulation attempts score no higher than a genuinely
+  weak prompt.
+- Empty/whitespace prompts short-circuit to 0/30, zero API calls.
+- Retries once on malformed JSON, then raises GraderError — never fabricates
+  a score. Total always recomputed server-side from the six scores.
+- temperature removed entirely — current-gen Claude models (Sonnet 5
+  included) reject it outright with a 400.
+- Model routing: grade_prompt() takes a `model` param. HAIKU_MODEL and
+  SONNET_MODEL constants support the Haiku-first, Sonnet-on-ambiguous-score
+  escalation strategy.
+- rubric_weights on Scenario: per-scenario dimension importance, defaults to
+  equal weight (backward compatible with a plain sum), normalizes back to a
+  30-point max regardless of skew.
+- calibration_examples on Scenario: known-correct past submissions, fed to
+  the judge to anchor its sense of scale. Never fabricated — real reviewed
+  scores only.
 
 
-2. FASTAPI BACKEND (main.py)
+2. FASTAPI BACKEND (backend/main.py)
 ----------------------------------------
-- Implemented POST /attempts — the real endpoint replacing the mocked
-  gradePrompt() call in the frontend. Wraps llm_grader.grade_prompt(),
-  returns the same JSON shape, matches the brief's rough API surface.
-
-- Added GET /health for a basic liveness check.
-
-- Added GET /admin/spend for checking today/month/all-time grading cost
-  without opening the log file by hand. NOTE: currently has no auth —
-  add access control before this is ever deployed anywhere public.
-
-- CORS restricted to the local Vite dev server (localhost:5173) for now
-  — update allow_origins to the real deployed frontend URL before shipping.
-
-- Hard per-IP rate limiting on /attempts via slowapi (default 10/minute,
-  overridable via ATTEMPTS_RATE_LIMIT env var) — per the brief's explicit
-  instruction to rate-limit this endpoint hard since it's the only one
-  that costs real money.
-
-- Wired in budget enforcement: check_budget() runs before every grading
-  call and refuses (HTTP 429) once a configured daily cap is hit.
-
-- Added grade_with_escalation(): grades with Haiku first (cheap, fast).
-  If the score lands in an ambiguous band (default 12-20 out of 30,
-  tunable via PROMPTWORKS_ESCALATION_LOW / _HIGH env vars), automatically
-  re-grades with Sonnet and uses that result instead. Bills correctly for
-  every call actually made, including a Haiku call that later gets
-  superseded by Sonnet's result.
+- POST /attempts — grades a prompt and writes an `attempts` row. Auth is
+  OPTIONAL: a bearer token attributes the attempt to a user; no token grades
+  anonymously (the homepage's "Try one now" widget depends on this).
+- POST /auth/request-code, POST /auth/verify-code, POST /auth/complete-profile,
+  GET /auth/me — the full passwordless email-code login flow. verify-code
+  doubles as signup: no separate signup endpoint.
+- GET /health, GET /admin/spend (no auth on this one yet — local-dev only).
+- CORS reads ALLOWED_ORIGINS from env, defaults to the Vite dev server only.
+- Hard per-IP rate limiting on /attempts (slowapi, default 10/minute) and a
+  separate limit on /auth/request-code.
+- Budget enforcement via spend_tracker.check_budget() before every grading
+  call.
+- grade_with_escalation() — grades with Haiku first, re-grades with Sonnet
+  only if the score lands in an ambiguous band. Bills every call actually
+  made, including a superseded Haiku call.
 
 
-3. SPEND TRACKING (spend_tracker.py — new file)
+3. DATABASE LAYER (backend/db/ — Postgres, not Mongo)
 ----------------------------------------
-- Local JSONL log (spend_log.jsonl by default) recording every grading
-  call's model, token counts, and computed cost in USD.
+Note: the original brief specified MongoDB. The actual build uses Postgres
+via SQLAlchemy + Alembic instead — a real architectural decision made along
+the way, not documented anywhere until now. Tables: orgs, users, tracks,
+scenarios, attempts, workflows, assignments, assignment_completions,
+login_codes.
 
-- get_total_spend("today" / "month" / "all") reads the log back and sums.
-
-- check_budget() raises BudgetExceededError once today's spend hits an
-  optional PROMPTWORKS_DAILY_BUDGET_USD cap. Unset by default (no cap
-  enforced unless you turn it on).
-
-- Pricing hardcoded per model (Sonnet 5: $3/$15 per million input/output
-  tokens as of the Sep 1, 2026 price change; Haiku 4.5: $1/$5). Update
-  PRICING_PER_MILLION_TOKENS if you switch models or pricing changes.
-
-- This is intentionally a stopgap — a flat file, not a database table.
-  Once Carlos's MongoDB is live, the same interface (record_usage /
-  get_total_spend / check_budget) can write to a real `spend` collection
-  instead, without changing any calling code.
+- attempts stores each of the six rubric dimensions as its OWN column
+  (clarity_score, clarity_feedback, etc.) rather than one JSON blob —
+  deliberate, so the team heat map and org rollups can use PERCENTILE_CONT
+  and GROUP BY cheaply.
+- scenarios mirrors llm_grader.Scenario field-for-field; main.py builds the
+  dataclass straight from a row.
+- No password_hash anywhere — passwordless auth by design.
 
 
-4. TEST SUITE (tests/ — new directory)
+4. AUTH (backend/auth/)
 ----------------------------------------
-- tests/test_llm_grader.py — 21 mocked tests, no API key or network
-  required. Covers: empty-prompt short-circuit, valid parsing, retry-then-
-  fail behavior, rejecting out-of-range/missing/wrong-type scores, the
-  injection guardrail's structural placement, rubric weighting (equal-
-  weight default, skewed weights, normalization to 30), and calibration
-  example formatting/ordering.
-
-- tests/test_spend_tracker.py — 6 tests using a temp log file. Confirms
-  cost math, date-based filtering, and budget cap enforcement.
-
-- tests/test_escalation.py — 5 mocked tests for grade_with_escalation():
-  low/high scores don't escalate, mid-range scores do and Sonnet's result
-  wins, boundary values (12 and 20 exactly) correctly trigger escalation,
-  and empty prompts never escalate or get billed.
-
-- tests/test_injection_live.py — the one test file that makes REAL API
-  calls (costs a few cents to run). Automatically skipped unless
-  ANTHROPIC_API_KEY is set, so it won't run in CI or cost money by
-  accident. Feeds Claude three actual injection attempts and asserts none
-  of them score anywhere near a genuinely well-engineered prompt.
-
-- Current total: 32 passing (mocked) + 4 skip-unless-key (live).
+- codes.py — 6-digit login codes. Generation is cryptographically random
+  (secrets.randbelow, not random). Only the SHA-256 hash is stored; the
+  plaintext exists only in the sent email. 5-attempt lockout, checked BEFORE
+  the hash comparison so a burned code can't be probed further.
+- jwt.py — stateless session tokens (HS256), 7-day default expiry. No
+  sessions table, so no revocation before expiry — the trade-off for
+  statelessness, and why the default expiry isn't longer.
+- dependencies.py — get_current_user (401s without a valid token) vs.
+  get_current_user_optional (returns None) — /attempts uses the optional
+  one specifically so anonymous grading keeps working.
+- Delivery via Resend. LOGIN_CODE_DEV_ECHO=1 logs codes to console instead
+  of emailing, for local dev only — never enable it anywhere real.
 
 
-5. DEPENDENCIES (requirements.txt)
+5. SPEND TRACKING (backend/spend_tracker.py)
 ----------------------------------------
-anthropic>=0.40.0
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-python-dotenv>=1.0.0
-slowapi>=0.1.9
-pytest>=8.0.0
+- Local JSONL log, get_total_spend("today"/"month"/"all"), optional
+  PROMPTWORKS_DAILY_BUDGET_USD cap via check_budget().
+- Stopgap by design — same interface would move to a real DB table without
+  changing callers.
 
 
-6. KNOWN GAPS / NEXT STEPS
+6. SCENARIO CONTENT (data/ + scripts/seed_scenarios.py)
 ----------------------------------------
-- SCENARIOS in main.py is a placeholder with one demo scenario. Real
-  scenario data still needs to be ported from frontend/src/data/scenarios.js
-  into the Scenario dataclass shape (including real rubric_weights and
-  calibration_examples once available).
-- No database persistence yet — waiting on Carlos's MongoDB setup.
-  Attempts are graded and returned but not currently saved anywhere.
-- /admin/spend has no authentication — fine for local dev only.
-- CORS origins need updating before any real deployment.
-- .env must never be committed — confirmed .gitignore covers it, and
-  confirmed the project folder should NOT live inside a OneDrive-synced
-  path, since OneDrive sync can leak the file outside of Git entirely.
+- Real scenario content lives as reviewable JSON files: data/tracks.json
+  (12 tracks) + data/scenarios/*.json (10 scenarios), NOT hardcoded in
+  Python anymore.
+- seed_scenarios.py loads and validates these, then upserts into Postgres
+  by slug — re-running after an edit updates rows in place rather than
+  duplicating. --dry-run validates without touching a database, suitable
+  for CI.
+- Validation is strict: unknown fields, missing required fields, a
+  scenario's track not existing, a scenario's filename not matching its own
+  slug, malformed rubric_weights or calibration_examples all fail loudly
+  before anything is written.
+- No fabricated calibration examples shipped — all 10 real scenario files
+  carry an empty calibration_examples list, consistent with the "never
+  invent scores" rule.
+
+
+7. DEPLOYMENT (deploy/)
+----------------------------------------
+- Self-hosted on Carlos's own hardware (a NUC), not a cloud PaaS.
+- docker-compose.yml runs: Caddy (reverse proxy + static frontend host,
+  bound to 127.0.0.1 only), cloudflared (outbound tunnel — no inbound ports
+  opened on the router at all), Postgres (no published port, internal
+  network only), the FastAPI api container (also no published port,
+  reachable only via Caddy), and Uptime Kuma for local monitoring.
+- Caddy serves frontend/dist directly as a static SPA and proxies /api/* to
+  the api container — this is why the frontend calls relative /api/... paths
+  with no API_BASE_URL and no CORS config needed in production.
+- deploy.sh is the actual deploy script: checks for a clean git tree, pulls,
+  validates required .env vars are present BEFORE building anything, builds
+  the frontend, builds+starts the API, waits for Postgres to report ready
+  (not just "container started"), runs migrations, re-seeds scenarios
+  (idempotent), restarts the API, then verifies the site and /api/health
+  actually respond.
+- status.sh — one-command health check: containers running, Caddy serving,
+  SPA deep-links resolving, API responding through Caddy (not directly —
+  catches "API up but unroutable"), migration version, scenario/attempt/user
+  counts, public HTTPS reachability, and whether the machine's sleep/suspend
+  is masked (a real prior failure mode — a NUC that goes to sleep takes the
+  whole site down).
+
+
+8. TEST SUITE
+----------------------------------------
+Full suite, run against the complete real codebase: 101 passing, 58 skipped
+(database-dependent, skip gracefully without a reachable test Postgres — see
+tests/conftest.py), 4 skipped live API tests (need ANTHROPIC_API_KEY).
+
+Covers: grader parsing/retries/validation, prompt-injection structural
+placement, rubric weighting math, calibration example formatting, spend
+math and budget enforcement, JWT issue/decode/every rejection path (expired,
+tampered, wrong secret, alg=none forgery, malformed payload), login-code
+generation/hashing/expiry/lockout/replay, and seed_scenarios.py's file
+validation against the REAL data files (not just synthetic fixtures) plus
+upsert idempotency.
+
+
+9. THE RUBRIC-KEY BUG — found and fixed across the entire stack
+----------------------------------------
+The real frontend (frontend/src/data/rubric.js) defines the six dimensions
+with SHORT keys: clarity, context, constraints, format, audience, examples.
+Every backend file instead used longer, invented names (task_clarity,
+context_supplied, output_format, role_and_audience) that were never checked
+against the actual frontend source. This wasn't a cosmetic mismatch — it
+would have made every score bar and feedback line render blank or undefined
+the moment the frontend was wired to this backend, since RubricBreakdown,
+ScorePanel, and HeatMap all read scores/feedback by these literal keys.
+
+Confirmed present in EVERY layer of the real repo before this fix:
+llm_grader.py's DIMENSIONS list and system prompt, main.py's response
+models, models.py's DIMENSIONS tuple AND the attempts table's twelve
+per-dimension columns, the original Alembic migration, and five of the
+test files.
+
+Fixed in this pass, using the complete real codebase (not a partial copy):
+- backend/llm_grader.py — DIMENSIONS, rubric descriptions, system prompt's
+  JSON schema.
+- backend/main.py — DimensionScores/DimensionFeedback field names. ALSO
+  fixed `tokens`: the real frontend (lib/grader.js's estimateTokens())
+  expects a single int — the submitted prompt's own length, for the
+  ScorePanel token-efficiency comparison — not the {input, output} API
+  usage shape this endpoint was returning. Added _estimate_prompt_tokens()
+  matching Stage 1's exact formula. API usage tracking for spend_tracker.py
+  and the attempts row's tokens_input/tokens_output stays separate and
+  untouched — this was a fix to what the endpoint RETURNS, not to billing.
+- backend/db/models.py — DIMENSIONS tuple, and the attempts table's twelve
+  score/feedback columns and their check constraints, renamed to match
+  (e.g. task_clarity_score -> clarity_score). Scenario's own
+  output_format/role_and_audience TEXT columns were correctly left alone —
+  those are descriptive input fields, not the six output dimension keys,
+  same names as llm_grader.Scenario's own fields by design.
+- A NEW Alembic migration (not an edit to the original) — since Carlos's
+  database has already run the initial migration live, the fix is an
+  additive rename migration (alter_column + constraint rename), so an
+  already-deployed database can upgrade in place without a wipe.
+- Five test files corrected to match: test_llm_grader.py,
+  test_injection_live.py, test_db_models.py, test_api.py. Scenario's own
+  input field names (output_format=, role_and_audience= as constructor
+  kwargs) were deliberately left alone in these edits — only the six output
+  dimension keys changed.
+- data/scenarios/*.json and scripts/seed_scenarios.py needed NO changes —
+  they validate rubric_weights against DIMENSIONS symbolically, so they
+  picked up the corrected keys automatically once models.py was fixed.
+
+Verified, not assumed: full test suite re-run after every file changed,
+101 passing throughout, SQLAlchemy's own table introspection confirmed the
+real column names post-fix, Pydantic's model_fields confirmed the response
+shape post-fix.
+
+
+10. KNOWN GAPS — what's still actually missing right now
+----------------------------------------
+- THE BIG ONE: the live frontend (carlostechsolutions.com) is NOT wired to
+  this backend yet. Player.jsx and TryOneNow.jsx still import gradePrompt()
+  from lib/grader.js — the Stage 1 fake local scorer. Every score a visitor
+  sees on the live site right now is fake, not from Claude, regardless of
+  how correct the backend now is. This is the next real piece of work.
+- /admin/spend has no authentication.
+- Dashboard.jsx, Team.jsx, Workflows.jsx still render from data/org.js mock
+  data (LEARNER, TEAM, WORKFLOWS) — not real attempts from the database.
+  There's currently no GET endpoint for a learner's real history/profile,
+  or for team rollups, for the frontend to call even if it wanted to.
+- model_output on the attempts row is always null — llm_grader grades the
+  submitted prompt directly without ever executing it against a model, so
+  Player.jsx's "Model output" panel has nothing real to show either.
+- Stage 1's gradePrompt() also computed a `headline` field (the "Strong /
+  Solid / Halfway..." line) for free from the score total. The backend
+  doesn't return one — that logic should get ported as a small CLIENT-SIDE
+  helper when the frontend is wired up, not added to the API response.
+- .env / secrets handling: confirm deploy/.env is never committed (the repo
+  structure suggests it correctly isn't) and that the project working copy
+  isn't sitting in a synced folder (OneDrive, etc.) that could leak it
+  outside of git.
