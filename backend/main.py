@@ -12,8 +12,10 @@ Endpoints:
 gradePrompt() produced, so ScorePanel, RubricBreakdown and the rest need no
 changes — just point the app at this URL instead of the mocked lib/grader.js.
 
-Run locally (with Postgres up and DATABASE_URL set):
-    uvicorn backend.main:app --reload
+Run locally (with Postgres up and DATABASE_URL set), from the repo root —
+not from backend/, or the module path and .env lookup both break. Port 8080
+because that is what the Vite dev server proxies /api to (frontend/vite.config.js):
+    uvicorn backend.main:app --reload --port 8080
 """
 
 from __future__ import annotations

@@ -12,12 +12,9 @@ import { AccountMenu } from "./AccountMenu.jsx";
 // purpose so they don't read as the same feature.
 const NAV = [
   { to: "/platform", label: "Platform" },
-  { to: "/check", label: "Check a prompt" },
-  { to: "/scenarios", label: "Scenarios" },
   { to: "/library", label: "Prompt Library" },
   { to: "/#business", label: "For Business" },
   { to: "/pricing", label: "Pricing" },
-  { to: "/resources", label: "Resources" },
   { to: "/about", label: "About Us" },
 ];
 

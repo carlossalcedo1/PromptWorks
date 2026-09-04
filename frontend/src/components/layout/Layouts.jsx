@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { MarketingHeader } from "./MarketingHeader.jsx";
 import { AppHeader } from "./AppHeader.jsx";
 import { Footer } from "./Footer.jsx";
+import { useAuth } from "../../lib/auth.jsx";
 
 /** Top of the page on navigation — except when the URL names a section,
  *  in which case scroll to that section instead. */
@@ -46,6 +47,19 @@ export function MarketingLayout() {
       <Footer />
     </div>
   );
+}
+
+/**
+ * For a page that is linked from both navs and needs no account — the public
+ * prompt library is the one.
+ *
+ * Without this the library sits in one layout or the other, and whichever
+ * half of the site you did not come from swaps its header out from under you
+ * on click. Picking the chrome by session keeps the nav you were just using.
+ */
+export function AdaptiveLayout() {
+  const { session } = useAuth();
+  return session ? <AppLayout /> : <MarketingLayout />;
 }
 
 export function AppLayout() {

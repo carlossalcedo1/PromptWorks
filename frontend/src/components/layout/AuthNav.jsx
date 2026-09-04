@@ -11,6 +11,7 @@ const NAV = [
   { to: "/scenarios", label: "Prompt Library" },
   { to: "/#business", label: "For Business" },
   { to: "/pricing", label: "Pricing" },
+  { to: "/resources", label: "Resources" },
   { to: "/about", label: "About Us" },
 ];
 

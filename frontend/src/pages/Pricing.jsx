@@ -59,8 +59,8 @@ const FAQ = [
     "Bring your own key. You supply a model API key and pay the provider directly for inference, so nothing caps you once the free 5,000 tokens run out. Pro raises the included allowance to 250,000 tokens instead.",
   ],
   [
-    "Is the certification a real assessment?",
-    "It is a scored assessment against the same six-dimension rubric, not an attendance badge. If it ever becomes a badge, we will stop calling it certification.",
+    "Why do I need Pro?",
+    "Want to take practice more seriously or improve your skills faster? Pro gives you more graded reps, access to advanced tracks, and the ability to compare model outputs side by side.",
   ],
   [
     "What happens to our prompts?",

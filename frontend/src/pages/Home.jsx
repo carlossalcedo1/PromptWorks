@@ -121,9 +121,12 @@ export default function Home() {
     <>
       {/* Build notice. Sits above the hero rather than in the header, so it
           is scoped to the homepage and can come down in one edit. */}
-      <div className="px-6 pt-4 md:px-10">
-        <div className="mx-auto w-full max-w-[1180px]">
-          <p className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-[13px] leading-relaxed text-red-800">
+      <div className="flex justify-center px-6 pt-4 md:px-10">
+        {/* Flex item, so the box is only as wide as its own text — max-w-full
+            keeps it wrapping inside the viewport rather than overflowing on
+            a narrow screen. */}
+        <div className="max-w-full">
+          <p className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-center text-[13px] leading-relaxed text-red-800">
             Project is actively being worked on and website content may change
             at any time.{" "}
             <Link
@@ -378,6 +381,41 @@ export default function Home() {
         </div>
       </Section>
 
+      {/* Security & data handling */}
+      <Section id="security" className="border-t border-rule">
+        <div className="grid gap-12 lg:grid-cols-[1fr_1.2fr] lg:gap-16">
+          <SectionHead
+            eyebrow="Security & data handling"
+            title="Answered before you ask."
+          />
+          <div className="grid gap-px overflow-hidden rounded-2xl border border-rule bg-rule sm:grid-cols-2">
+            {[
+              [
+                "No training on your data",
+                "Prompts and outputs are never used to train models. Not ours, not a provider's.",
+              ],
+              [
+                "SSO / SAML and SCIM",
+                "Provisioning through your identity provider. Enterprise only — an individual account needs none of it.",
+              ],
+              [
+                "Configurable retention",
+                "You set how long attempts are kept. Deletion is real deletion.",
+              ],
+              [
+                "Security review before signature",
+                "Not after. Documentation is available before the first call if you want it.",
+              ],
+            ].map(([t, b]) => (
+              <div key={t} className="bg-paper p-6">
+                <h3 className="h-card">{t}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-ink-70">{b}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Section>
+
       {/* For business — the old /for-teams page, folded in as one optional
           section. Everything above works for one person with no org at all. */}
       <Section id="business" className="border-y border-rule bg-paper-2/50">
@@ -533,41 +571,6 @@ export default function Home() {
                 denial-explanation prompt nine times a shift does not cancel it.
               </p>
             </Card>
-          </div>
-        </div>
-      </Section>
-
-      {/* Security & data handling */}
-      <Section id="security">
-        <div className="grid gap-12 lg:grid-cols-[1fr_1.2fr] lg:gap-16">
-          <SectionHead
-            eyebrow="Security & data handling"
-            title="Answered before you ask."
-          />
-          <div className="grid gap-px overflow-hidden rounded-2xl border border-rule bg-rule sm:grid-cols-2">
-            {[
-              [
-                "No training on your data",
-                "Prompts and outputs are never used to train models. Not ours, not a provider's.",
-              ],
-              [
-                "SSO / SAML and SCIM",
-                "Provisioning through your identity provider. Enterprise only — an individual account needs none of it.",
-              ],
-              [
-                "Configurable retention",
-                "You set how long attempts are kept. Deletion is real deletion.",
-              ],
-              [
-                "Security review before signature",
-                "Not after. Documentation is available before the first call if you want it.",
-              ],
-            ].map(([t, b]) => (
-              <div key={t} className="bg-paper p-6">
-                <h3 className="h-card">{t}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-ink-70">{b}</p>
-              </div>
-            ))}
           </div>
         </div>
       </Section>

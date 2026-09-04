@@ -8,3 +8,8 @@ __pycache__/
 
 # spend_tracker's local log — runtime data, not source.
 spend_log.jsonl
+
+# Local uvicorn output. With LOGIN_CODE_DEV_ECHO=1 these contain live login
+# codes, so they must never be committed.
+api-dev.log
+api-dev.err.log

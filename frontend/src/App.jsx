@@ -1,5 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { MarketingLayout, AppLayout } from "./components/layout/Layouts.jsx";
+import {
+  MarketingLayout,
+  AppLayout,
+  AdaptiveLayout,
+} from "./components/layout/Layouts.jsx";
 import { Button, Section } from "./components/ui/index.jsx";
 import { AuthProvider, RequireAuth } from "./lib/auth.jsx";
 
@@ -83,15 +87,6 @@ export default function App() {
             <Route path="/practice" element={<Practice />} />
             <Route path="/practice/:slug" element={<Player />} />
             <Route path="/check" element={<FreeformCheck />} />
-            <Route path="/library" element={<Library />} />
-            <Route
-              path="/profile"
-              element={
-                <RequireAuth>
-                  <Profile />
-                </RequireAuth>
-              }
-            />
             <Route
               path="/profile"
               element={
@@ -116,6 +111,12 @@ export default function App() {
                 </RequireAuth>
               }
             />
+          </Route>
+
+          {/* Public, and reachable from both navs — so it keeps whichever
+              header you arrived with rather than swapping it. */}
+          <Route element={<AdaptiveLayout />}>
+            <Route path="/library" element={<Library />} />
           </Route>
 
           {/* Onboarding, login, signup — no chrome at all */}
