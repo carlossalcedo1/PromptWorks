@@ -38,11 +38,20 @@
 		file_server
 
 		# Vite emits content-hashed filenames into /assets, so they can be
-		# cached forever. index.html must never be cached or deploys will not
-		# be seen.
+		# cached forever. Everything else eventually resolves to index.html
+		# (either directly or via the try_files fallback above) and must
+		# never be cached, or a deploy silently won't be seen. This used to
+		# be scoped to the literal path /index.html, which only matched a
+		# request for exactly that URL — "/", "/pricing", "/dashboard" and
+		# every other SPA route fell through with no Cache-Control header at
+		# all, leaving browsers to apply their own heuristic caching instead.
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
-		header /index.html Cache-Control "no-cache, must-revalidate"
+
+		@notAssets {
+			not path /assets/*
+		}
+		header @notAssets Cache-Control "no-cache, must-revalidate"
 	}
 
 	header {
